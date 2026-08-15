@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16171A">
+<title>Ventas en Ruta — Quesos Cerinza</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="stylesheet" href="./css/estilo.css">
+</head>
+<body>
+
+<header>
+  <div class="marca">
+    <strong>Ventas en Ruta</strong>
+    <span id="cabDispositivo">sin configurar</span>
+  </div>
+  <div class="impresora">
+    <span class="luz" id="luzImpresora"></span>
+    <span id="estadoImpresora">Impresora sin conectar</span>
+  </div>
+</header>
+
+<div id="aviso" class="aviso" hidden></div>
+
+<!-- ============ VENDER ============ -->
+<section class="pantalla" data-pantalla="vender">
+
+  <fieldset>
+    <legend>Cliente</legend>
+    <input id="cliNombre" type="text" placeholder="Nombre del negocio o la persona" autocomplete="off">
+    <div id="parecidos" class="parecidos" hidden></div>
+    <div id="datosCliente" hidden>
+      <div class="dos">
+        <div><label for="cliDoc">Cédula o NIT</label><input id="cliDoc" type="text" inputmode="numeric"></div>
+        <div><label for="cliTel">Teléfono</label><input id="cliTel" type="tel" inputmode="tel"></div>
+      </div>
+      <label for="cliDir">Dirección</label>
+      <input id="cliDir" type="text">
+      <div class="dos">
+        <div><label for="cliPueblo">Pueblo</label><input id="cliPueblo" type="text"></div>
+        <div><label for="cliDia">Ruta sugerida</label><select id="cliDia"></select></div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Productos</legend>
+    <input id="buscarProducto" type="search" placeholder="Buscar por nombre o código" autocomplete="off">
+    <div id="listaProductos" class="productos"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Venta</legend>
+    <div id="carrito"></div>
+    <div class="totalcaja">
+      <span>Total</span>
+      <strong id="total">$0</strong>
+    </div>
+    <label for="pago">Pago</label>
+    <select id="pago">
+      <option value="efectivo">Efectivo</option>
+      <option value="pendiente">Queda pendiente</option>
+      <option value="consignacion">Consignación</option>
+    </select>
+    <label for="nota">Nota (opcional)</label>
+    <input id="nota" type="text" placeholder="Ej: vuelve el jueves">
+  </fieldset>
+
+  <button id="btnCobrar" class="primario grande" disabled>Guardar e imprimir</button>
+  <button id="btnConectar">Conectar impresora</button>
+</section>
+
+<!-- ============ DÍA ============ -->
+<section class="pantalla" data-pantalla="dia" hidden>
+  <h2>Hoy</h2>
+  <div id="resumenDia" class="metricas"></div>
+
+  <fieldset>
+    <legend>Cuadre del producto que llevó</legend>
+    <div id="cuadre"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Ventas del día</legend>
+    <div id="listaVentas"></div>
+  </fieldset>
+
+  <button id="btnCerrar" class="primario grande">Cerrar y enviar al PC</button>
+  <button id="btnImprimirCierre">Imprimir tira de cierre</button>
+</section>
+
+<!-- ============ CARGA ============ -->
+<section class="pantalla" data-pantalla="carga" hidden>
+  <h2>Carga del día</h2>
+  <p class="explica">Anote cuánto producto adicional lleva para ofrecer. Con esto la app calcula al final qué se vendió y qué debe regresar al cuarto frío.</p>
+  <div id="listaCarga" class="carga"></div>
+  <button id="btnGuardarCarga" class="primario grande">Guardar carga</button>
+</section>
+
+<!-- ============ AJUSTES ============ -->
+<section class="pantalla" data-pantalla="ajustes" hidden>
+  <h2>Ajustes</h2>
+
+  <fieldset>
+    <legend>Este celular</legend>
+    <label for="ajDispositivo">Número del celular (M1, M2, M3)</label>
+    <input id="ajDispositivo" type="text" maxlength="4" placeholder="M1">
+    <label for="ajVendedor">Nombre del vendedor</label>
+    <input id="ajVendedor" type="text">
+    <p class="nota" id="infoConsecutivo"></p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Datos de la empresa</legend>
+    <label for="ajNit">NIT</label><input id="ajNit" type="text">
+    <label for="ajTel">Teléfono</label><input id="ajTel" type="text">
+    <label for="ajLugar">Ubicación</label><input id="ajLugar" type="text">
+  </fieldset>
+
+  <fieldset>
+    <legend>Productos y clientes</legend>
+    <p class="nota" id="infoSemilla"></p>
+    <label for="archivoSemilla">Cargar archivo generado en el PC</label>
+    <input id="archivoSemilla" type="file" accept=".json,application/json">
+  </fieldset>
+
+  <fieldset>
+    <legend>Impresora</legend>
+    <label for="ajCodepage">Tabla de caracteres</label>
+    <select id="ajCodepage">
+      <option value="0">CP437 (probar primero)</option>
+      <option value="2">CP850 Latino</option>
+      <option value="16">Windows-1252</option>
+      <option value="-1">Sin acentos</option>
+    </select>
+    <button id="btnProbarAcentos">Imprimir prueba de acentos</button>
+  </fieldset>
+
+  <button id="btnGuardarAjustes" class="primario grande">Guardar ajustes</button>
+</section>
+
+<nav class="nav">
+  <button data-ir="vender">Vender</button>
+  <button data-ir="dia">Hoy</button>
+  <button data-ir="carga">Carga</button>
+  <button data-ir="ajustes">Ajustes</button>
+</nav>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

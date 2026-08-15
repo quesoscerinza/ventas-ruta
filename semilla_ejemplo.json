@@ -1,0 +1,21 @@
+{
+ "formato": "cerinza-seed-v1",
+ "generado": "2026-08-15",
+ "productos": [
+  {"codigo":"QC001","nombre":"Campesino 450g","precio":9000,"se_pesa":false},
+  {"codigo":"QC002","nombre":"Campesino 250g","precio":5500,"se_pesa":false},
+  {"codigo":"QC010","nombre":"Doble crema 500g","precio":11500,"se_pesa":false},
+  {"codigo":"QC011","nombre":"Doble crema 250g","precio":6200,"se_pesa":false},
+  {"codigo":"QC020","nombre":"Cuajada 250g","precio":5000,"se_pesa":false},
+  {"codigo":"QC030","nombre":"Pera 450g","precio":12000,"se_pesa":false},
+  {"codigo":"QC049","nombre":"Bloque costeno","precio":0,"se_pesa":true},
+  {"codigo":"QC059","nombre":"Yogur fresa 1 L","precio":7200,"se_pesa":false},
+  {"codigo":"QC059","nombre":"Yogur mora 1 L","precio":7200,"se_pesa":false},
+  {"codigo":"QC070","nombre":"Crema de leche tarro","precio":8500,"se_pesa":false},
+  {"codigo":"QC077","nombre":"California 500g","precio":13000,"se_pesa":false},
+  {"codigo":"QC078","nombre":"California 250g","precio":7000,"se_pesa":false}
+ ],
+ "clientes": ["AIDA LUZ","TIENDA LA ESQUINA","SUPERMERCADO EL PORVENIR","PANADERIA SAN JOSE","HECTOR MORENO"],
+ "pueblos": ["Cerinza","Duitama","Sogamoso","Belen","Santa Rosa"],
+ "dias_ruta": ["Lunes","Martes","Miercoles","Jueves","Viernes","Sabado"]
+}
