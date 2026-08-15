@@ -1,0 +1,13 @@
+# Datos reales de clientes y ventas — nunca al repositorio
+semilla_2*.json
+cierre_*.json
+
+# Bases de datos
+*.db
+remisiones.db
+
+# Basura de Python y del sistema
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
