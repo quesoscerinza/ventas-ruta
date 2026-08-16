@@ -37,9 +37,15 @@ export class Ticket {
   constructor(codepage = '0') {
     this.cp = String(codepage);
     this.b = [];
-    this.crudo(0x1B, 0x40);                                       // ESC @ — reiniciar
+    this.crudo(0x1B, 0x40);   // ESC @ — reiniciar
+    // FS . — salir del modo multibyte (Kanji). Estas impresoras vienen de
+    // fábrica en modo chino: sin esto, cada byte alto (á, ñ) se toma como el
+    // inicio de un carácter de dos bytes, se traga el byte siguiente —incluso
+    // el salto de línea— y la tabla de caracteres se ignora por completo.
+    this.crudo(0x1C, 0x2E);
+    this.crudo(0x1B, 0x52, 0);  // ESC R — juego internacional: EE.UU.
     if (this.cp !== '-1') this.crudo(0x1B, 0x74, parseInt(this.cp, 10)); // ESC t — tabla
-    this.crudo(0x1B, 0x4D, 0);                                    // ESC M — fuente A
+    this.crudo(0x1B, 0x4D, 0);  // ESC M — fuente A
   }
   crudo(...b) { this.b.push(...b); return this; }
   centrar() { return this.crudo(0x1B, 0x61, 1); }
