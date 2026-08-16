@@ -427,8 +427,12 @@ $('#archivoSemilla').addEventListener('change', async e => {
 });
 
 $('#btnProbarAcentos').addEventListener('click', async () => {
-  const t = new Ticket(cfg.codepage);
-  t.linea('PRUEBA DE ACENTOS');
+  // Lee la tabla del selector EN VIVO, no la guardada: así se pueden
+  // comparar las cuatro opciones sin tener que guardar entre una y otra.
+  const cp = $('#ajCodepage').value;
+  const nombres = { '0': 'CP437', '2': 'CP850', '16': 'Windows-1252', '-1': 'SIN ACENTOS' };
+  const t = new Ticket(cp);
+  t.linea('PRUEBA: ' + (nombres[cp] || cp));
   t.separador();
   t.linea('áéíóú ÁÉÍÓÚ');
   t.linea('ñ Ñ ü Ü');
