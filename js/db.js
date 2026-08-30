@@ -11,7 +11,9 @@ const TIENDAS = {
   clientes_pc: { keyPath: 'id', autoIncrement: true },   // los que ya existen en el PC
   clientes_nuevos: { keyPath: 'uuid' },                  // capturados en la calle
   carga: { keyPath: 'fecha' },                           // lo que se lleva por día
-  ventas: { keyPath: 'uuid' }
+  ventas: { keyPath: 'uuid' },
+  ruta: { keyPath: 'fecha' },                            // el consolidado que manda el PC
+  entregas: { keyPath: 'clave' }                         // lo que el vendedor va marcando
 };
 
 let _db = null;
@@ -59,7 +61,8 @@ const AJUSTES_POR_DEFECTO = {
   dispositivo: '',            // M1, M2, M3 — se configura una sola vez por celular
   vendedor: '',
   consecutivo: 0,
-  codepage: '0',
+  codepage: '-1',   // Sin acentos: probado en la PT-210, su ROM es china y
+                    // no imprime minusculas acentuadas con ninguna tabla
   empresa_nombre: 'QUESOS CERINZA',
   empresa_nit: '',
   empresa_tel: '',
@@ -82,6 +85,58 @@ export async function siguienteNumero() {
   const n = (Number(a.consecutivo) || 0) + 1;
   await ajustar('consecutivo', n);
   return `${a.dispositivo || 'M?'}-${String(n).padStart(3, '0')}`;
+}
+
+/* ---------- La ruta del día que manda el PC ---------- */
+export async function cargarRuta(datos) {
+  if (datos.formato !== 'cerinza-ruta-v1') {
+    throw new Error('El archivo no es una ruta del día.');
+  }
+  await guardar('ruta', {
+    fecha: datos.fecha,
+    dia_ruta: datos.dia_ruta,
+    generado: datos.generado,
+    productos: datos.productos || [],
+    clientes: datos.clientes || []
+  });
+  return {
+    fecha: datos.fecha,
+    dia_ruta: datos.dia_ruta,
+    productos: (datos.productos || []).length,
+    clientes: (datos.clientes || []).length
+  };
+}
+
+/** La ruta de una fecha, o la más reciente que haya si no hay de esa fecha. */
+export async function rutaDe(fecha) {
+  const exacta = await obtener('ruta', fecha);
+  if (exacta) return exacta;
+  const todas = await todos('ruta');
+  if (!todas.length) return null;
+  return todas.sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+}
+
+/* Marcas de entrega. La clave junta fecha + tipo + id para que las
+   marcas de un día no se mezclen con las de otro. */
+const claveMarca = (fecha, tipo, id) => `${fecha}|${tipo}|${id}`;
+
+export async function marcar(fecha, tipo, id, hecho, extra = {}) {
+  const clave = claveMarca(fecha, tipo, id);
+  if (!hecho) return borrar('entregas', clave);
+  return guardar('entregas', {
+    clave, fecha, tipo, id, hecho: true,
+    momento: new Date().toISOString(), ...extra
+  });
+}
+
+export async function marcasDe(fecha) {
+  const todas = await todos('entregas');
+  const mapa = { producto: {}, cliente: {} };
+  for (const m of todas) {
+    if (m.fecha !== fecha) continue;
+    (mapa[m.tipo] || (mapa[m.tipo] = {}))[m.id] = m;
+  }
+  return mapa;
 }
 
 /* ---------- Semilla que viene del PC ---------- */

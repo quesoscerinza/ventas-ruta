@@ -15,6 +15,8 @@ let productos = [];
 let clientesPC = [];
 let carrito = [];          // [{codigo, nombre, precio, cant, subtotal}]
 let clienteActual = null;  // {uuid, nombre, doc, tel, dir, pueblo, dia_ruta, nuevo}
+let rutaHoy = null;        // el consolidado que mandó el PC
+let subRuta = 'productos'; // pestaña activa dentro de Ruta
 
 /* ================= Avisos ================= */
 function aviso(txt, tipo = 'ok') {
@@ -33,6 +35,7 @@ function ir(pantalla) {
   window.scrollTo(0, 0);
   if (pantalla === 'dia') pintarDia();
   if (pantalla === 'carga') pintarCarga();
+  if (pantalla === 'ruta') pintarRuta();
 }
 
 /* ================= Estado de la impresora ================= */
@@ -317,6 +320,82 @@ $('#btnGuardarCarga').addEventListener('click', async () => {
   aviso(`Carga guardada: ${items.length} productos.`);
 });
 
+/* ================= Pantalla Ruta ================= */
+$$('.subnav button').forEach(b => b.addEventListener('click', () => {
+  subRuta = b.dataset.sub;
+  $$('.subnav button').forEach(x => x.classList.toggle('activo', x === b));
+  $('#subProductos').hidden = subRuta !== 'productos';
+  $('#subClientes').hidden = subRuta !== 'clientes';
+}));
+
+async function pintarRuta() {
+  rutaHoy = await db.rutaDe(hoyISO());
+  if (!rutaHoy) {
+    $('#rutaCabecera').textContent =
+      'Todavía no ha cargado la ruta del día. Se la manda el PC por WhatsApp y se carga en Ajustes.';
+    $('#listaRutaProductos').innerHTML = '';
+    $('#listaRutaClientes').innerHTML = '';
+    return;
+  }
+
+  const vieja = rutaHoy.fecha !== hoyISO();
+  $('#rutaCabecera').innerHTML =
+    `<strong>${rutaHoy.dia_ruta}</strong> · ${fechaCorta(rutaHoy.fecha)}` +
+    (vieja ? ' <span class="marca-dup">no es de hoy</span>' : '');
+
+  const marcas = await db.marcasDe(rutaHoy.fecha);
+  pintarChequeoProductos(marcas.producto || {});
+  pintarChequeoClientes(marcas.cliente || {});
+}
+
+function barraAvance(hechos, total, rotulo) {
+  return `<div class="avance"><span>${rotulo}</span>
+    <strong>${hechos} de ${total}</strong></div>`;
+}
+
+function pintarChequeoProductos(marcas) {
+  const lista = rutaHoy.productos || [];
+  const hechos = lista.filter(p => marcas[p.codigo + '|' + p.nombre]).length;
+  $('#listaRutaProductos').innerHTML =
+    barraAvance(hechos, lista.length, 'Cargados') +
+    '<div class="chequeo">' + (lista.map(p => {
+      const id = p.codigo + '|' + p.nombre;
+      const ok = !!marcas[id];
+      return `<label class="chq ${ok ? 'hecho' : ''}">
+        <input type="checkbox" data-tipo="producto" data-id="${id}" ${ok ? 'checked' : ''}>
+        <span class="txt"><span class="t1">${p.nombre}</span>
+        <span class="t2">${p.codigo || ''}</span></span>
+        <span class="cant">${p.cantidad}${p.unidad ? ' ' + p.unidad : ''}</span>
+      </label>`;
+    }).join('') || '<p class="vacio">La ruta llegó sin productos.</p>') + '</div>';
+}
+
+function pintarChequeoClientes(marcas) {
+  const lista = rutaHoy.clientes || [];
+  const hechos = lista.filter(c => marcas[c.cliente_id]).length;
+  $('#listaRutaClientes').innerHTML =
+    barraAvance(hechos, lista.length, 'Entregados') +
+    '<div class="chequeo">' + (lista.map(c => {
+      const ok = !!marcas[c.cliente_id];
+      const detalle = (c.items || []).map(i => `${i.cant} ${i.nombre}`).join(', ');
+      return `<label class="chq ${ok ? 'hecho' : ''}">
+        <input type="checkbox" data-tipo="cliente" data-id="${c.cliente_id}" ${ok ? 'checked' : ''}>
+        <span class="txt"><span class="t1">${c.nombre}</span>
+        <span class="t2">${[c.pueblo, c.numero_remision].filter(Boolean).join(' · ')}<br>${detalle}</span></span>
+        <span class="cant">$${pesos(c.total || 0)}</span>
+      </label>`;
+    }).join('') || '<p class="vacio">La ruta llegó sin clientes.</p>') + '</div>';
+}
+
+async function alMarcar(e) {
+  const inp = e.target;
+  if (inp.type !== 'checkbox' || !inp.dataset.tipo) return;
+  await db.marcar(rutaHoy.fecha, inp.dataset.tipo, inp.dataset.id, inp.checked);
+  pintarRuta();
+}
+$('#listaRutaProductos').addEventListener('change', alMarcar);
+$('#listaRutaClientes').addEventListener('change', alMarcar);
+
 /* ================= Cierre y envío ================= */
 async function armarCierre() {
   const fecha = hoyISO();
@@ -325,6 +404,8 @@ async function armarCierre() {
   const nuevos = (await db.todos('clientes_nuevos')).filter(c => c.fecha === fecha);
   const carga = await db.cargaDe(fecha);
   const filas = await db.cuadre(fecha);
+  const ruta = await db.rutaDe(fecha);
+  const marcas = await db.marcasDe(fecha);
 
   const total = vivas.reduce((s, v) => s + v.total, 0);
   const efectivo = vivas.filter(v => v.pago === 'efectivo').reduce((s, v) => s + v.total, 0);
@@ -339,6 +420,15 @@ async function armarCierre() {
     ventas,                    // incluye las anuladas, con su motivo
     clientes_nuevos: nuevos,
     cuadre: filas,
+    entregas: ruta && ruta.fecha === fecha ? {
+      dia_ruta: ruta.dia_ruta,
+      productos_cargados: Object.keys(marcas.producto || {}),
+      clientes_entregados: Object.keys(marcas.cliente || {}),
+      clientes_sin_entregar: (ruta.clientes || [])
+        .filter(c => !(marcas.cliente || {})[c.cliente_id])
+        .map(c => ({ cliente_id: c.cliente_id, nombre: c.nombre,
+                     numero_remision: c.numero_remision, total: c.total }))
+    } : null,
     resumen: {
       fecha,
       num_ventas: vivas.length,
@@ -398,6 +488,10 @@ async function pintarAjustes() {
     ? `${productos.length} productos y ${clientesPC.length} clientes (${new Date(cfg.seed_fecha).toLocaleDateString('es-CO')})`
     : 'Sin cargar. La app no puede vender sin productos.';
   $('#infoConsecutivo').textContent = `Próxima remisión: ${cfg.dispositivo || 'M?'}-${String((Number(cfg.consecutivo) || 0) + 1).padStart(3, '0')}`;
+  const r = await db.rutaDe(hoyISO());
+  $('#infoRuta').textContent = r
+    ? `Ruta cargada: ${r.dia_ruta} del ${fechaCorta(r.fecha)} · ${(r.clientes || []).length} clientes`
+    : 'Sin ruta del día cargada.';
 }
 
 $('#btnGuardarAjustes').addEventListener('click', async () => {
@@ -417,9 +511,19 @@ $('#archivoSemilla').addEventListener('change', async e => {
   if (!f) return;
   try {
     const datos = JSON.parse(await f.text());
-    const r = await db.cargarSemilla(datos);
-    await recargar();
-    aviso(`Semilla cargada: ${r.productos} productos, ${r.clientes} clientes.`);
+    // Se reconoce por el contenido, no por el nombre: el vendedor no
+    // tiene que acordarse de cuál archivo va en cuál botón.
+    if (datos.formato === 'cerinza-ruta-v1') {
+      const r = await db.cargarRuta(datos);
+      await recargar();
+      aviso(`Ruta del ${r.dia_ruta} cargada: ${r.productos} productos, ${r.clientes} clientes.`);
+    } else if (datos.formato === 'cerinza-seed-v1') {
+      const r = await db.cargarSemilla(datos);
+      await recargar();
+      aviso(`Semilla cargada: ${r.productos} productos, ${r.clientes} clientes.`);
+    } else {
+      aviso('Ese archivo no lo reconozco. Debe ser la semilla o la ruta del día.', 'mal');
+    }
   } catch (err) {
     aviso('No se pudo leer el archivo: ' + err.message, 'mal');
   }
