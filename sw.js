@@ -1,5 +1,12 @@
-/* Service worker: la app queda guardada en el celular y abre sin señal. */
-const CACHE = 'cerinza-ruta-v1';
+/* Service worker: la app queda guardada en el celular y abre sin señal.
+
+   IMPORTANTE — cada vez que suba cambios a GitHub, SUBA ESTE NUMERO.
+   Es lo que bota el caché viejo de todos los celulares y los obliga a
+   recoger la versión nueva. Sin esto un celular puede quedarse semanas
+   con la versión anterior sin que nadie se entere. */
+const VERSION = 2;
+
+const CACHE = `cerinza-ruta-v${VERSION}`;
 const ARCHIVOS = [
   './', './index.html', './manifest.json',
   './css/estilo.css',
