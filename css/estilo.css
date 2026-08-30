@@ -209,3 +209,9 @@ tr.alerta td{background:var(--mal-claro)}
   padding:9px 11px;border-radius:3px;color:var(--ink)}
 .cfila.sugerido{background:#F7FBF8}
 .cfila .sug{display:block;font-size:10.5px;color:var(--verde);font-style:normal;margin-top:2px}
+
+/* --- Productos que se pesan o llegaron sin precio --- */
+.pprecio.pesa{color:var(--azul);font-size:12.5px}
+.pprecio.sinprecio{color:var(--mal);font-size:12px;font-weight:400}
+.iprecio.falta input{border-color:var(--mal);background:var(--mal-claro)}
+.iprecio.falta label{color:var(--mal)}

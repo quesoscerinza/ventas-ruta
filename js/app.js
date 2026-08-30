@@ -118,11 +118,19 @@ function pintarBuscador(filtro = '') {
   const lista = f
     ? productos.filter(p => normalizar(p.nombre).includes(f) || (p.codigo || '').includes(filtro.toUpperCase()))
     : productos;
-  $('#listaProductos').innerHTML = lista.slice(0, 40).map(p => `
+  $('#listaProductos').innerHTML = lista.slice(0, 40).map(p => {
+    // Los que se pesan traen el precio por kilo, no el de la pieza:
+    // el vendedor pesa en la calle y escribe el valor en la venta.
+    const etiqueta = p.se_pesa
+      ? `$${pesos(p.precio_kilo || 0)}/kg`
+      : (Number(p.precio) ? `$${pesos(p.precio)}` : 'sin precio');
+    const clase = p.se_pesa ? 'pesa' : (Number(p.precio) ? '' : 'sinprecio');
+    return `
     <button class="prod" data-id="${p.id}">
       <span class="pnombre">${p.nombre}</span>
-      <span class="pprecio">$${pesos(p.precio)}</span>
-    </button>`).join('') || '<p class="vacio">No hay productos. Cargue la semilla en Ajustes.</p>';
+      <span class="pprecio ${clase}">${etiqueta}</span>
+    </button>`;
+  }).join('') || '<p class="vacio">No hay productos. Cargue la semilla en Ajustes.</p>';
 }
 
 $('#buscarProducto').addEventListener('input', e => pintarBuscador(e.target.value));
@@ -138,7 +146,11 @@ function agregar(id) {
   if (!p) return;
   const ya = carrito.find(x => x.id === id);
   if (ya) ya.cant += 1;
-  else carrito.push({ id: p.id, codigo: p.codigo, nombre: p.nombre, precio: Number(p.precio) || 0, cant: 1 });
+  else carrito.push({
+    id: p.id, codigo: p.codigo, nombre: p.nombre,
+    precio: Number(p.precio) || 0, cant: 1,
+    se_pesa: !!p.se_pesa, precio_kilo: Number(p.precio_kilo) || 0
+  });
   pintarCarrito();
 }
 
@@ -155,9 +167,10 @@ function pintarCarrito() {
         <button class="mas" data-n="${n}">+</button>
         <span class="isub">$${pesos(i.subtotal)}</span>
       </div>
-      <div class="iprecio">
-        <label>Precio unit.</label>
-        <input class="ipre" type="number" inputmode="numeric" value="${i.precio}" data-n="${n}">
+      <div class="iprecio ${i.precio ? '' : 'falta'}">
+        <label>${i.se_pesa ? `Precio (pesar · $${pesos(i.precio_kilo)}/kg)` : 'Precio unit.'}</label>
+        <input class="ipre" type="number" inputmode="numeric" value="${i.precio}" data-n="${n}"
+               placeholder="${i.se_pesa ? 'valor pesado' : 'escriba el precio'}">
       </div>
     </div>`).join('') : '<p class="vacio">Toque un producto para agregarlo.</p>';
 
@@ -193,6 +206,11 @@ $('#btnCobrar').addEventListener('click', async () => {
   const cli = tomarCliente();
   if (!cli) { aviso('Falta el nombre del cliente.', 'mal'); return $('#cliNombre').focus(); }
   if (!carrito.length) return;
+  const sinPrecio = carrito.filter(i => !Number(i.precio));
+  if (sinPrecio.length) {
+    aviso('Falta el precio de: ' + sinPrecio.map(i => i.nombre).join(', '), 'mal');
+    return;
+  }
 
   const ahora = new Date();
   const venta = {
