@@ -259,7 +259,7 @@ async function pintarDia() {
         <span>${v.hora}</span>
         <span class="vtotal">$${pesos(v.total)}</span>
       </div>
-      <div class="vcli">${v.cliente_nombre}${v.cliente_posible_duplicado ? ' <span class="marca">posible duplicado</span>' : ''}</div>
+      <div class="vcli">${v.cliente_nombre}${v.cliente_posible_duplicado ? ' <span class="marca-dup">posible duplicado</span>' : ''}</div>
       <div class="vpago">${v.pago}${v.anulada ? ' · ANULADA' : ''}</div>
       <div class="vacc">
         <button data-reimprimir="${v.uuid}">Reimprimir</button>
@@ -427,12 +427,8 @@ $('#archivoSemilla').addEventListener('change', async e => {
 });
 
 $('#btnProbarAcentos').addEventListener('click', async () => {
-  // Lee la tabla del selector EN VIVO, no la guardada: así se pueden
-  // comparar las cuatro opciones sin tener que guardar entre una y otra.
-  const cp = $('#ajCodepage').value;
-  const nombres = { '0': 'CP437', '2': 'CP850', '16': 'Windows-1252', '-1': 'SIN ACENTOS' };
-  const t = new Ticket(cp);
-  t.linea('PRUEBA: ' + (nombres[cp] || cp));
+  const t = new Ticket(cfg.codepage);
+  t.linea('PRUEBA DE ACENTOS');
   t.separador();
   t.linea('áéíóú ÁÉÍÓÚ');
   t.linea('ñ Ñ ü Ü');
