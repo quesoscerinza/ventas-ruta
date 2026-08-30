@@ -44,16 +44,22 @@ export function remision(venta, cfg) {
   t.separador('-');
 
   // --- Productos: nombre arriba, cantidad y valor abajo ---
+  t.linea(alinear('PRODUCTOS', 'PRECIO', COLUMNAS));
+  t.separador('-');
   for (const it of venta.items) {
     for (const l of envolver(it.nombre, COLUMNAS)) t.linea(l);
     t.linea(alinear(`  ${num(it.cant)} x ${pesos(it.precio)}`, pesos(it.subtotal), COLUMNAS));
   }
 
-  // --- Total: doble tamaño, así que la línea cuenta como 16 columnas ---
+  // --- Total: doble tamaño, así que la línea cuenta como 16 columnas.
+  //     Va aislado entre renglones en blanco: es el número que la gente
+  //     busca primero y tiene que encontrarse solo. ---
   t.separador('-');
+  t.linea('');
   t.negrita(true).grande(true);
   t.linea(('TOTAL: $' + pesos(venta.total)).padStart(COLUMNAS / 2));
   t.grande(false).negrita(false);
+  t.linea('');
 
   // --- Cierre ---
   t.linea('Pago: ' + (PAGOS[venta.pago] || venta.pago));
@@ -64,7 +70,7 @@ export function remision(venta, cfg) {
   t.linea(centrar('Gracias por su compra'));
 
   // Espacio para rasgar sin cortar el ticket siguiente
-  t.avanzar(5);
+  t.avanzar(4);
   return t.bytes();
 }
 
@@ -82,9 +88,11 @@ export function cierre(resumen, cfg) {
   t.linea(alinear('Efectivo', '$' + pesos(resumen.efectivo), COLUMNAS));
   t.linea(alinear('Pendiente', '$' + pesos(resumen.pendiente), COLUMNAS));
   t.separador('-');
+  t.linea('');
   t.negrita(true).grande(true);
   t.linea(('TOTAL: $' + pesos(resumen.total)).padStart(COLUMNAS / 2));
   t.grande(false).negrita(false);
+  t.linea('');
   t.separador('-');
   t.linea('CUADRE DE PRODUCTO');
   t.linea(alinear('Producto', 'Sobra', COLUMNAS));
@@ -94,6 +102,6 @@ export function cierre(resumen, cfg) {
   }
   t.separador('=');
   t.linea('Firma: ______________________');
-  t.avanzar(5);
+  t.avanzar(4);
   return t.bytes();
 }
