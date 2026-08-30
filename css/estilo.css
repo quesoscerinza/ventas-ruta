@@ -203,3 +203,9 @@ tr.alerta td{background:var(--mal-claro)}
   border-radius:4px;margin-bottom:10px;font-size:13px;
 }
 .avance strong{font-size:16px}
+
+/* --- Carga prellenada desde la remisión APP MOVIL --- */
+.origen{background:var(--verde-claro);border-left:4px solid var(--verde);
+  padding:9px 11px;border-radius:3px;color:var(--ink)}
+.cfila.sugerido{background:#F7FBF8}
+.cfila .sug{display:block;font-size:10.5px;color:var(--verde);font-style:normal;margin-top:2px}

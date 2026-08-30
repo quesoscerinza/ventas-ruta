@@ -101,7 +101,8 @@ export async function cargarRuta(datos) {
     dia_ruta: datos.dia_ruta,
     generado: datos.generado,
     productos: datos.productos || [],
-    clientes: datos.clientes || []
+    clientes: datos.clientes || [],
+    carga: datos.carga || []
   });
   return {
     fecha: datos.fecha,

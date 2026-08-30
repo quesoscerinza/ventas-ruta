@@ -303,15 +303,62 @@ $('#listaVentas').addEventListener('click', async e => {
 });
 
 /* ================= Pantalla Carga ================= */
+
+/** Lo que el PC dice que lleva este celular, según la remisión APP MOVIL. */
+async function cargaSugerida() {
+  const ruta = await db.rutaDe(hoyISO());
+  if (!ruta || !ruta.carga || !ruta.carga.length) return null;
+  // Si hay varias, la de este celular; si ninguna trae sufijo, la primera.
+  const mia = ruta.carga.find(c => c.dispositivo === cfg.dispositivo)
+           || ruta.carga.find(c => !c.dispositivo);
+  if (!mia) return null;
+  const mapa = new Map();
+  for (const it of mia.items) mapa.set(`${it.codigo || ''}|${it.nombre}`, it.cant);
+  return { ...mia, mapa, fecha: ruta.fecha };
+}
+
 async function pintarCarga() {
-  const carga = await db.cargaDe(hoyISO());
-  const mapa = new Map(carga.items.map(i => [i.id, i.cant]));
-  $('#listaCarga').innerHTML = productos.map(p => `
-    <div class="cfila">
-      <span>${p.nombre}</span>
+  const guardada = await db.cargaDe(hoyISO());
+  const yaConfirmada = guardada.items.length > 0;
+  const mapaGuardado = new Map(guardada.items.map(i => [i.id, i.cant]));
+  const sug = await cargaSugerida();
+
+  // Encabezado: de dónde salen los números que ve
+  if (sug) {
+    const desfase = sug.fecha !== hoyISO() ? ' (la ruta no es de hoy)' : '';
+    $('#cargaOrigen').innerHTML =
+      `Viene de la remisión <strong>${sug.numero_remision || sug.nombre}</strong>${desfase}. ` +
+      (yaConfirmada
+        ? 'Ya la confirmó; puede corregirla si hace falta.'
+        : 'Cuente el producto y corrija lo que no cuadre antes de guardar.');
+    $('#cargaOrigen').hidden = false;
+  } else {
+    $('#cargaOrigen').hidden = true;
+  }
+
+  // Se muestran primero los productos que trae la remisión
+  const conSugerencia = sug
+    ? productos.filter(p => sug.mapa.has(p.id))
+    : [];
+  const resto = productos.filter(p => !conSugerencia.includes(p));
+  const orden = [...conSugerencia, ...resto];
+
+  $('#listaCarga').innerHTML = orden.map(p => {
+    const propuesto = sug ? sug.mapa.get(p.id) : undefined;
+    // Antes de confirmar se propone lo de la remisión; después manda lo contado.
+    const valor = yaConfirmada
+      ? (mapaGuardado.get(p.id) ?? '')
+      : (propuesto ?? '');
+    const distinto = yaConfirmada && propuesto !== undefined
+      && Number(mapaGuardado.get(p.id) || 0) !== Number(propuesto);
+    return `
+    <div class="cfila ${propuesto !== undefined ? 'sugerido' : ''}">
+      <span>${p.nombre}${propuesto !== undefined
+        ? `<em class="sug">remisión: ${propuesto}${distinto ? ' ⚠' : ''}</em>` : ''}</span>
       <input type="number" inputmode="numeric" min="0" data-id="${p.id}"
-             value="${mapa.get(p.id) || ''}" placeholder="0">
-    </div>`).join('') || '<p class="vacio">Cargue la semilla en Ajustes.</p>';
+             value="${valor}" placeholder="0">
+    </div>`;
+  }).join('') || '<p class="vacio">Cargue la semilla en Ajustes.</p>';
 }
 
 $('#btnGuardarCarga').addEventListener('click', async () => {
@@ -319,8 +366,25 @@ $('#btnGuardarCarga').addEventListener('click', async () => {
     const p = productos.find(x => x.id === inp.dataset.id);
     return { id: inp.dataset.id, codigo: p?.codigo || '', nombre: p?.nombre || inp.dataset.id, cant: Number(inp.value) || 0 };
   }).filter(i => i.cant > 0);
-  await db.guardar('carga', { fecha: hoyISO(), items });
-  aviso(`Carga guardada: ${items.length} productos.`);
+  const sug = await cargaSugerida();
+  await db.guardar('carga', {
+    fecha: hoyISO(), items,
+    remision: sug ? (sug.numero_remision || sug.nombre) : '',
+    sugerida: sug ? [...sug.mapa].map(([id, cant]) => ({ id, cant })) : []
+  });
+  // Si el conteo físico no coincide con la remisión, decirlo en el momento
+  let difs = 0;
+  if (sug) {
+    const contado = new Map(items.map(i => [i.id, i.cant]));
+    const llaves = new Set([...sug.mapa.keys(), ...contado.keys()]);
+    for (const k of llaves) {
+      if (Number(sug.mapa.get(k) || 0) !== Number(contado.get(k) || 0)) difs++;
+    }
+  }
+  aviso(difs
+    ? `Carga guardada. ${difs} producto(s) no coinciden con la remisión — el PC lo verá.`
+    : `Carga guardada: ${items.length} productos.`);
+  pintarCarga();
 });
 
 /* ================= Pantalla Ruta ================= */
@@ -420,6 +484,8 @@ async function armarCierre() {
     fecha,
     generado: new Date().toISOString(),
     carga: carga.items,
+    carga_remision: carga.remision || '',
+    carga_sugerida: carga.sugerida || [],
     ventas,                    // incluye las anuladas, con su motivo
     clientes_nuevos: nuevos,
     cuadre: filas,
