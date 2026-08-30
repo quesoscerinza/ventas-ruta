@@ -17,6 +17,7 @@ let carrito = [];          // [{codigo, nombre, precio, cant, subtotal}]
 let clienteActual = null;  // {uuid, nombre, doc, tel, dir, pueblo, dia_ruta, nuevo}
 let rutaHoy = null;        // el consolidado que mandó el PC
 let subRuta = 'productos'; // pestaña activa dentro de Ruta
+let cierreListo = null;    // el archivo del día, armado de antemano
 
 /* ================= Avisos ================= */
 function aviso(txt, tipo = 'ok') {
@@ -270,6 +271,8 @@ async function pintarDia() {
       </div>
     </div>`).join('') : '<p class="vacio">Todavía no hay ventas hoy.</p>';
 
+  prepararCierre();   // sin await: que el botón nunca tenga que esperar
+
   const filas = await db.cuadre(fecha);
   $('#cuadre').innerHTML = filas.length ? `
     <table>
@@ -295,7 +298,7 @@ $('#listaVentas').addEventListener('click', async e => {
     v.anulada = true; v.motivo_anulacion = motivo;
     await db.guardar('ventas', v);
     aviso('Anulada ' + v.numero);
-    pintarDia();
+    pintarDia();   // vuelve a armar el archivo del cierre
   }
 });
 
@@ -440,33 +443,57 @@ async function armarCierre() {
   };
 }
 
-$('#btnCerrar').addEventListener('click', async () => {
-  if (!cfg.dispositivo) { aviso('Falta el número de celular en Ajustes.', 'mal'); return ir('ajustes'); }
-  const datos = await armarCierre();
-  if (!datos.ventas.length && !datos.carga.length) { aviso('No hay nada que enviar todavía.', 'mal'); return; }
-
-  const nombre = `cierre_${cfg.dispositivo}_${datos.fecha}.json`;
-  const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' });
-  const archivo = new File([blob], nombre, { type: 'application/json' });
-
+/* Android solo permite abrir el menú de Compartir como reacción inmediata
+   a un toque. Si el botón se pone a leer la base primero, ese permiso se
+   pierde y Android responde "Permission denied". Por eso el archivo se
+   arma antes, mientras el vendedor mira la pantalla, y el botón solo
+   comparte lo que ya está listo. */
+async function prepararCierre() {
   try {
-    if (navigator.canShare?.({ files: [archivo] })) {
-      await navigator.share({
-        files: [archivo],
-        title: 'Cierre ' + cfg.dispositivo,
-        text: `Cierre ${fechaCorta(datos.fecha)} · ${datos.resumen.num_ventas} ventas · $${pesos(datos.resumen.total)}`
-      });
-      aviso('Enviado.');
-    } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = nombre;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      aviso('Se descargó ' + nombre + '. Adjúntelo por WhatsApp.');
-    }
+    const datos = await armarCierre();
+    const nombre = `cierre_${cfg.dispositivo || 'M?'}_${datos.fecha}.json`;
+    const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' });
+    cierreListo = {
+      datos, nombre, blob,
+      archivo: new File([blob], nombre, { type: 'application/json' })
+    };
   } catch (e) {
-    if (e.name !== 'AbortError') aviso('No se pudo compartir: ' + e.message, 'mal');
+    cierreListo = null;
+  }
+}
+
+function descargarCierre(c) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(c.blob);
+  a.download = c.nombre;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  aviso('Se descargó ' + c.nombre + '. Adjúntelo por WhatsApp.');
+}
+
+$('#btnCerrar').addEventListener('click', () => {
+  if (!cfg.dispositivo) { aviso('Falta el número de celular en Ajustes.', 'mal'); return ir('ajustes'); }
+
+  const c = cierreListo;
+  if (!c) { aviso('Un momento, todavía estoy armando el archivo.', 'mal'); prepararCierre(); return; }
+  if (!c.datos.ventas.length && !c.datos.carga.length) {
+    aviso('No hay nada que enviar todavía.', 'mal'); return;
+  }
+
+  // Ningún await antes de esta línea: es lo que mantiene vivo el permiso.
+  if (navigator.canShare?.({ files: [c.archivo] })) {
+    navigator.share({
+      files: [c.archivo],
+      title: 'Cierre ' + cfg.dispositivo,
+      text: `Cierre ${fechaCorta(c.datos.fecha)} · ${c.datos.resumen.num_ventas} ventas · $${pesos(c.datos.resumen.total)}`
+    }).then(() => aviso('Enviado.'))
+      .catch(e => {
+        if (e.name === 'AbortError') return;
+        // Si Android igual lo rechaza, queda el camino de siempre.
+        descargarCierre(c);
+      });
+  } else {
+    descargarCierre(c);
   }
 });
 
