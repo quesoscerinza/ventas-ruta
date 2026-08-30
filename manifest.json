@@ -1,12 +1,12 @@
 {
-  "name": "Ventas en Ruta — Quesos Cerinza",
-  "short_name": "Ventas Ruta",
+  "name": "Quesos Cerinza - Ventas",
+  "short_name": "QC Ventas",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#E4E6E3",
-  "theme_color": "#16171A",
+  "background_color": "#EEF2F1",
+  "theme_color": "#14532D",
   "lang": "es-CO",
   "icons": [
     { "src": "./assets/icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
