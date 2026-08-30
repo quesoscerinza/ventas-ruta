@@ -506,29 +506,56 @@ $('#btnGuardarAjustes').addEventListener('click', async () => {
   aviso('Ajustes guardados.');
 });
 
+async function procesarArchivo(texto) {
+  const datos = JSON.parse(texto);
+    // Se reconoce por el contenido, no por el nombre: el vendedor no
+    // tiene que acordarse de cuál archivo va en cuál botón.
+  // Se reconoce por el contenido, no por el nombre: el vendedor no
+  // tiene que acordarse de cuál archivo va en cuál botón.
+  if (datos.formato === 'cerinza-ruta-v1') {
+    const r = await db.cargarRuta(datos);
+    await recargar();
+    aviso(`Ruta del ${r.dia_ruta} cargada: ${r.productos} productos, ${r.clientes} clientes.`);
+    ir('ruta');
+  } else if (datos.formato === 'cerinza-seed-v1') {
+    const r = await db.cargarSemilla(datos);
+    await recargar();
+    aviso(`Semilla cargada: ${r.productos} productos, ${r.clientes} clientes.`);
+  } else {
+    aviso('Ese archivo no lo reconozco. Debe ser la semilla o la ruta del día.', 'mal');
+  }
+}
+
 $('#archivoSemilla').addEventListener('change', async e => {
   const f = e.target.files[0];
   if (!f) return;
   try {
-    const datos = JSON.parse(await f.text());
-    // Se reconoce por el contenido, no por el nombre: el vendedor no
-    // tiene que acordarse de cuál archivo va en cuál botón.
-    if (datos.formato === 'cerinza-ruta-v1') {
-      const r = await db.cargarRuta(datos);
-      await recargar();
-      aviso(`Ruta del ${r.dia_ruta} cargada: ${r.productos} productos, ${r.clientes} clientes.`);
-    } else if (datos.formato === 'cerinza-seed-v1') {
-      const r = await db.cargarSemilla(datos);
-      await recargar();
-      aviso(`Semilla cargada: ${r.productos} productos, ${r.clientes} clientes.`);
-    } else {
-      aviso('Ese archivo no lo reconozco. Debe ser la semilla o la ruta del día.', 'mal');
-    }
+    await procesarArchivo(await f.text());
   } catch (err) {
     aviso('No se pudo leer el archivo: ' + err.message, 'mal');
   }
   e.target.value = '';
 });
+
+/* Archivo que llegó por el menú Compartir de Android (desde WhatsApp).
+   El service worker lo dejó guardado y nos mandó aquí con ?compartido=1. */
+async function revisarCompartido() {
+  if (!new URLSearchParams(location.search).has('compartido')) return;
+  history.replaceState(null, '', location.pathname);   // limpiar la dirección
+  try {
+    const bandeja = await caches.open('compartido');
+    const guardado = await bandeja.match('/ultimo');
+    if (!guardado) {
+      aviso('No llegó el archivo compartido. Intente de nuevo.', 'mal');
+      return;
+    }
+    const texto = await guardado.text();
+    await bandeja.delete('/ultimo');
+    await procesarArchivo(texto);
+  } catch (err) {
+    aviso('No se pudo leer el archivo compartido: ' + err.message, 'mal');
+  }
+}
 
 $('#btnProbarAcentos').addEventListener('click', async () => {
   const t = new Ticket(cfg.codepage);
@@ -565,9 +592,10 @@ async function recargar() {
 
 $$('.nav button').forEach(b => b.addEventListener('click', () => ir(b.dataset.ir)));
 
-recargar().then(() => {
+recargar().then(async () => {
   if (!cfg.dispositivo) { ir('ajustes'); aviso('Configure el número de este celular para empezar.', 'mal'); }
   else ir('vender');
+  await revisarCompartido();
 });
 
 if ('serviceWorker' in navigator) {

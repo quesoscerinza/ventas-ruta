@@ -3,7 +3,11 @@
    cuando el vendedor comparte el cierre del día. */
 
 const NOMBRE = 'cerinza_ruta';
-const VERSION = 1;
+// SUBIR ESTE NUMERO cada vez que se agregue un almacén nuevo a TIENDAS.
+// Si no, en los celulares que ya tienen la base creada el navegador no
+// crea los almacenes nuevos y todo lo que los use falla.
+//   v2: se agregaron 'ruta' y 'entregas'
+const VERSION = 2;
 
 const TIENDAS = {
   ajustes: { keyPath: 'clave' },

@@ -4,7 +4,7 @@
    Es lo que bota el caché viejo de todos los celulares y los obliga a
    recoger la versión nueva. Sin esto un celular puede quedarse semanas
    con la versión anterior sin que nadie se entere. */
-const VERSION = 3;
+const VERSION = 4;
 
 const CACHE = `cerinza-ruta-v${VERSION}`;
 const ARCHIVOS = [
@@ -26,8 +26,31 @@ self.addEventListener('activate', ev => {
   );
 });
 
-/* Red primero para tener siempre la última versión; si no hay señal, del caché. */
+/* Recibir un archivo compartido desde WhatsApp.
+
+   Android manda el archivo aquí por POST cuando el vendedor elige la app
+   en el menú Compartir. Lo guardamos y mandamos la app a abrirse con una
+   marca en la dirección; ella lo recoge y lo procesa. Esto evita que el
+   vendedor tenga que buscar carpetas: los documentos de WhatsApp viven en
+   un sitio que el selector de archivos de Android ya no deja ver. */
 self.addEventListener('fetch', ev => {
+  const url = new URL(ev.request.url);
+  if (ev.request.method === 'POST' && url.pathname.endsWith('/compartir')) {
+    ev.respondWith((async () => {
+      try {
+        const formulario = await ev.request.formData();
+        const archivo = formulario.get('archivo');
+        const texto = await archivo.text();
+        const bandeja = await caches.open('compartido');
+        await bandeja.put('/ultimo', new Response(texto, {
+          headers: { 'x-nombre': archivo.name || 'archivo.json' }
+        }));
+      } catch (e) { /* si falla, la app lo dirá al no encontrar nada */ }
+      return Response.redirect('./?compartido=1', 303);
+    })());
+    return;
+  }
+
   if (ev.request.method !== 'GET') return;
   ev.respondWith(
     fetch(ev.request)
