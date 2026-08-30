@@ -93,6 +93,27 @@
   <button id="btnImprimirCierre">Imprimir tira de cierre</button>
 </section>
 
+<!-- ============ RUTA DEL DÍA ============ -->
+<section class="pantalla" data-pantalla="ruta" hidden>
+  <h2>Ruta del día</h2>
+  <p id="rutaCabecera" class="explica"></p>
+
+  <div class="subnav">
+    <button data-sub="productos" class="activo">Productos</button>
+    <button data-sub="clientes">Clientes</button>
+  </div>
+
+  <div id="subProductos">
+    <p class="explica">Marque cada producto a medida que lo va cargando al carro.</p>
+    <div id="listaRutaProductos" class="chequeo"></div>
+  </div>
+
+  <div id="subClientes" hidden>
+    <p class="explica">Marque cada cliente cuando le haya entregado su pedido.</p>
+    <div id="listaRutaClientes" class="chequeo"></div>
+  </div>
+</section>
+
 <!-- ============ CARGA ============ -->
 <section class="pantalla" data-pantalla="carga" hidden>
   <h2>Carga del día</h2>
@@ -122,10 +143,13 @@
   </fieldset>
 
   <fieldset>
-    <legend>Productos y clientes</legend>
+    <legend>Archivos que manda el PC</legend>
     <p class="nota" id="infoSemilla"></p>
-    <label for="archivoSemilla">Cargar archivo generado en el PC</label>
+    <p class="nota" id="infoRuta"></p>
+    <label for="archivoSemilla">Cargar archivo (semilla o ruta del día)</label>
     <input id="archivoSemilla" type="file" accept=".json,application/json">
+    <p class="nota">Reconoce solo el archivo por su contenido: la semilla trae
+    productos y clientes; la ruta trae el consolidado del día.</p>
   </fieldset>
 
   <fieldset>
@@ -143,8 +167,9 @@
   <button id="btnGuardarAjustes" class="primario grande">Guardar ajustes</button>
 </section>
 
-<nav class="nav">
+<nav class="nav nav-5">
   <button data-ir="vender">Vender</button>
+  <button data-ir="ruta">Ruta</button>
   <button data-ir="dia">Hoy</button>
   <button data-ir="carga">Carga</button>
   <button data-ir="ajustes">Ajustes</button>
