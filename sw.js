@@ -4,7 +4,7 @@
    Es lo que bota el caché viejo de todos los celulares y los obliga a
    recoger la versión nueva. Sin esto un celular puede quedarse semanas
    con la versión anterior sin que nadie se entere. */
-const VERSION = 11;
+const VERSION = 12;
 
 const CACHE = `cerinza-ruta-v${VERSION}`;
 const ARCHIVOS = [
@@ -39,11 +39,25 @@ self.addEventListener('fetch', ev => {
     ev.respondWith((async () => {
       try {
         const formulario = await ev.request.formData();
-        const archivo = formulario.get('archivo');
-        const texto = await archivo.text();
+
+        // Android no siempre manda el archivo con el nombre que pedimos,
+        // así que se busca el primer campo que sea un archivo de verdad.
+        let archivo = null, suelto = '';
+        for (const [, valor] of formulario.entries()) {
+          if (valor && typeof valor.text === 'function' && 'size' in valor) {
+            archivo = valor;
+            break;
+          }
+          if (typeof valor === 'string' && valor.trim()) suelto = valor.trim();
+        }
+
+        // Si no vino archivo, guardamos el texto suelto: la app lo mira y
+        // explica que llegó el nombre en vez del contenido. Pasa cuando el
+        // documento de WhatsApp todavía no se ha descargado en el celular.
+        const contenido = archivo ? await archivo.text() : suelto;
         const bandeja = await caches.open('compartido');
-        await bandeja.put('/ultimo', new Response(texto, {
-          headers: { 'x-nombre': archivo.name || 'archivo.json' }
+        await bandeja.put('/ultimo', new Response(contenido, {
+          headers: { 'x-nombre': (archivo && archivo.name) || 'compartido' }
         }));
       } catch (e) { /* si falla, la app lo dirá al no encontrar nada */ }
       return Response.redirect('./?compartido=1', 303);
