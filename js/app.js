@@ -707,7 +707,23 @@ $('#btnGuardarAjustes').addEventListener('click', async () => {
 });
 
 async function procesarArchivo(texto) {
-  const datos = JSON.parse(texto);
+  const limpio = String(texto || '').trim();
+
+  // Si no empieza con llave no es un JSON. El caso típico: WhatsApp
+  // mandó solo el NOMBRE del archivo porque el documento todavía no
+  // se había descargado en este celular.
+  if (!limpio.startsWith('{')) {
+    if (/^semilla_|^ruta_|^cierre_/i.test(limpio) || limpio.length < 120) {
+      throw new Error(
+        'Llegó el nombre del archivo, no el archivo. En WhatsApp toque ' +
+        'primero el documento para descargarlo, y cuando ya esté en el ' +
+        'celular vuelva a compartirlo.'
+      );
+    }
+    throw new Error('Ese archivo no tiene el contenido esperado.');
+  }
+
+  const datos = JSON.parse(limpio);
     // Se reconoce por el contenido, no por el nombre: el vendedor no
     // tiene que acordarse de cuál archivo va en cuál botón.
   // Se reconoce por el contenido, no por el nombre: el vendedor no
