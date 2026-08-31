@@ -20,11 +20,35 @@
 export const USUARIOS = [
   // Ejemplo — reemplácelo por los vendedores reales.
   // La clave de este ejemplo es: cerinza2026
-  {
-    usuario: 'demo',
-    nombre: 'Vendedor de prueba',
+    {
+    usuario: 'alvaro',
+    nombre: 'Alvaro',
     dispositivo: 'M1',
-    hash: '4441022d136dbf6500209580122568d0704f1f0742720f5c18aa5a4778a4c191'
+    hash: 'c7581b3021aada5f32fa1b97c06ae97920d86ddfd1d9449a3721a595a34477ef'
+  },
+   {
+    usuario: 'paula',
+    nombre: 'paula',
+    dispositivo: 'M2',
+    hash: 'b2f5717460f9e32d7938944fa7b3f518aa0c448f0f55603d249f72ff7cb81c20'
+  },
+   {
+    usuario: 'diana',
+    nombre: 'diana',
+    dispositivo: 'M3',
+    hash: '594548d8744549dd581dcea4ae0a30434eead72e07d4adc48ad885a6127cbfc1'
+  },
+    {
+    usuario: 'pedro',
+    nombre: 'pedro',
+    dispositivo: 'M4',
+    hash: '0a7a5e5e0b6b44e64095ebd9c66f03cc0ea0fcc3c17fe003f64d8aed84003a38'
+  },
+   {
+    usuario: 'daniel',
+    nombre: 'daniel',
+    dispositivo: 'M5',
+    hash: 'c6055aa50767472d3c2c47bcd88f9041ec84ae5a03f1a5054943862e046b3be0'
   },
 ];
 
