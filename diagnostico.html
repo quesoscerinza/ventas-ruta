@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico de ingreso</title>
+<style>
+  :root{--verde:#15803D;--mal:#B91C1C;--linea:#CBD5D1;--ink:#0F172A;--suave:#475569}
+  *{box-sizing:border-box}
+  body{margin:0;padding:16px 14px 40px;background:#EEF2F1;color:var(--ink);
+    font-family:ui-monospace,"Roboto Mono",monospace;font-size:14px;line-height:1.45}
+  h1{font-size:17px;margin:0 0 4px;text-transform:uppercase;color:#14532D}
+  p.sub{font-size:12px;color:var(--suave);margin:0 0 16px}
+  fieldset{border:1px solid var(--linea);background:#fff;padding:12px;margin:0 0 12px;border-radius:4px}
+  legend{font-size:11px;text-transform:uppercase;letter-spacing:.09em;padding:0 6px;color:var(--verde)}
+  label{display:block;font-size:11.5px;margin:9px 0 4px;color:var(--suave)}
+  input{width:100%;font-family:inherit;font-size:16px;padding:11px 10px;
+    border:1px solid var(--linea);border-radius:3px;background:#fff;color:var(--ink)}
+  button{width:100%;font-family:inherit;font-size:14px;font-weight:700;border:none;
+    border-radius:3px;padding:14px;background:var(--verde);color:#fff;margin-top:14px;
+    text-transform:uppercase;letter-spacing:.04em}
+  .dato{display:flex;justify-content:space-between;gap:10px;padding:5px 0;
+    border-bottom:1px solid var(--linea);font-size:12.5px}
+  .dato span:last-child{font-weight:700;text-align:right;word-break:break-all}
+  .ok{color:var(--verde)} .no{color:var(--mal)}
+  pre{background:#F4F6F5;border:1px solid var(--linea);border-radius:3px;
+    padding:9px;font-size:10.5px;overflow-x:auto;margin:6px 0 0;white-space:pre-wrap;word-break:break-all}
+  .veredicto{padding:12px;border-radius:4px;font-size:13px;margin-top:12px}
+  .veredicto.ok{background:#DCFCE7;border-left:4px solid var(--verde)}
+  .veredicto.no{background:#FEE2E2;border-left:4px solid var(--mal);color:var(--mal)}
+</style>
+</head>
+<body>
+
+<h1>Diagnóstico de ingreso</h1>
+<p class="sub">Página temporal. Bórrela del repositorio cuando el ingreso funcione.</p>
+
+<fieldset>
+  <legend>El navegador</legend>
+  <div id="entorno"></div>
+</fieldset>
+
+<fieldset>
+  <legend>Usuarios que ve la app</legend>
+  <div id="lista"></div>
+</fieldset>
+
+<fieldset>
+  <legend>Probar una clave</legend>
+  <label for="u">Usuario</label>
+  <input id="u" type="text" autocapitalize="none" autocorrect="off" spellcheck="false">
+  <label for="c">Clave (se ve a propósito)</label>
+  <input id="c" type="text" autocapitalize="none" autocorrect="off" spellcheck="false">
+  <button id="probar">Comparar</button>
+  <div id="salida"></div>
+</fieldset>
+
+<script type="module">
+const $ = s => document.querySelector(s);
+const fila = (k, v, clase = '') =>
+  `<div class="dato"><span>${k}</span><span class="${clase}">${v}</span></div>`;
+
+// --- Entorno ---
+$('#entorno').innerHTML =
+  fila('Conexión segura (https)', window.isSecureContext ? 'sí' : 'NO',
+       window.isSecureContext ? 'ok' : 'no') +
+  fila('crypto.subtle disponible', (window.crypto && crypto.subtle) ? 'sí' : 'NO',
+       (window.crypto && crypto.subtle) ? 'ok' : 'no') +
+  fila('Dirección', location.origin);
+
+// --- Cargar el archivo de usuarios ---
+let mod = null;
+try {
+  mod = await import('./js/usuarios.js?d=' + Date.now());
+} catch (e) {
+  $('#lista').innerHTML =
+    `<div class="veredicto no"><strong>El archivo js/usuarios.js no se pudo leer.</strong>
+     Casi seguro le falta o le sobra una coma, o una comilla.<pre>${e.message}</pre></div>`;
+}
+
+if (mod) {
+  const us = mod.USUARIOS || [];
+  if (!us.length) {
+    $('#lista').innerHTML = '<div class="veredicto no">La lista está vacía.</div>';
+  } else {
+    $('#lista').innerHTML = us.map(u => {
+      const largo = String(u.hash || '').length;
+      const bien = largo === 64 && /^[0-9a-f]+$/.test(u.hash || '');
+      return fila(`${u.usuario} · ${u.dispositivo}`,
+                  bien ? 'huella correcta' : `huella RARA (${largo} caracteres)`,
+                  bien ? 'ok' : 'no');
+    }).join('');
+  }
+}
+
+// --- Comparar ---
+$('#probar').addEventListener('click', async () => {
+  const salida = $('#salida');
+  if (!mod) return;
+  const usuario = $('#u').value;
+  const clave = $('#c').value;
+
+  const buscado = String(usuario).trim().toLowerCase();
+  const enc = (mod.USUARIOS || []).find(x => x.usuario.toLowerCase() === buscado);
+
+  if (!enc) {
+    salida.innerHTML =
+      `<div class="veredicto no"><strong>No existe el usuario «${buscado}».</strong>
+       Revise cómo quedó escrito en el archivo.</div>`;
+    return;
+  }
+
+  const calculado = await mod.huella(buscado, clave);
+  const coincide = calculado === enc.hash;
+
+  salida.innerHTML =
+    fila('Usuario que se busca', `«${buscado}»`) +
+    fila('Largo de la clave', clave.length + ' caracteres') +
+    fila('Espacios en los extremos', clave !== clave.trim() ? 'SÍ' : 'no',
+         clave !== clave.trim() ? 'no' : 'ok') +
+    `<div class="dato"><span>Huella calculada</span></div><pre>${calculado}</pre>` +
+    `<div class="dato"><span>Huella guardada</span></div><pre>${enc.hash}</pre>` +
+    (coincide
+      ? '<div class="veredicto ok"><strong>Coinciden.</strong> Con esta clave la app debería dejar entrar.</div>'
+      : '<div class="veredicto no"><strong>No coinciden.</strong> La clave escrita no es la que se registró, o la huella quedó mal pegada en el archivo.</div>');
+});
+</script>
+</body>
+</html>
