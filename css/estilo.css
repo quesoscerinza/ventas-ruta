@@ -236,3 +236,12 @@ tr.alerta td{background:var(--mal-claro)}
 }
 .ingreso-pie{font-size:11px;margin:14px 0 0 !important}
 input:disabled{background:#F4F6F5;color:var(--ink-soft)}
+
+/* --- Ver la clave al ingresar --- */
+.clave-caja{display:flex;gap:6px;align-items:stretch}
+.clave-caja input{flex:1;min-width:0}
+button.ojo{
+  width:auto;flex:none;margin:0;padding:0 13px;font-size:11px;
+  background:transparent;color:var(--azul);border:1px solid var(--linea);
+}
+.ingreso-error small{display:block;margin-top:5px;font-size:11px;opacity:.85}
