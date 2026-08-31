@@ -10,6 +10,22 @@
 </head>
 <body>
 
+<!-- ============ INGRESO ============ -->
+<div id="ingreso" class="ingreso" hidden>
+  <div class="ingreso-caja">
+    <img src="./assets/logo.png" alt="" onerror="this.remove()">
+    <h1>Quesos Cerinza</h1>
+    <p>Ventas en ruta</p>
+    <label for="inUsuario">Usuario</label>
+    <input id="inUsuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <label for="inClave">Clave</label>
+    <input id="inClave" type="password" autocomplete="current-password">
+    <button id="btnIngresar" class="primario grande">Ingresar</button>
+    <p id="ingresoError" class="ingreso-error" hidden></p>
+    <p class="ingreso-pie">La sesión dura hasta el final del día.</p>
+  </div>
+</div>
+
 <header>
   <div class="marca">
     <img src="./assets/logo.png" alt="" onerror="this.remove()">
@@ -134,6 +150,8 @@
     <label for="ajVendedor">Nombre del vendedor</label>
     <input id="ajVendedor" type="text">
     <p class="nota" id="infoConsecutivo"></p>
+    <p class="nota" id="infoSesion" hidden></p>
+    <button id="btnSalir" hidden>Cerrar sesión</button>
   </fieldset>
 
   <fieldset>

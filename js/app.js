@@ -6,6 +6,7 @@ import * as impresora from './printer.js';
 import * as ticket from './ticket.js';
 import { Ticket } from './escpos.js';
 import { uuid, pesos, hoyISO, fechaCorta, parecidos, normalizar } from './util.js';
+import { verificar, hayUsuarios } from './usuarios.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -18,6 +19,62 @@ let clienteActual = null;  // {uuid, nombre, doc, tel, dir, pueblo, dia_ruta, nu
 let rutaHoy = null;        // el consolidado que mandó el PC
 let subRuta = 'productos'; // pestaña activa dentro de Ruta
 let cierreListo = null;    // el archivo del día, armado de antemano
+
+/* ================= Sesión ================= */
+/* La sesión dura el día. Al otro día el vendedor vuelve a ingresar, y
+   así el celular queda amarrado a quien de verdad lo está usando. */
+
+async function sesionActiva() {
+  const a = await db.ajustes();
+  const s = a.sesion;
+  if (!s || !s.usuario) return null;
+  if (s.fecha !== hoyISO()) return null;   // caducó
+  return s;
+}
+
+async function entrar() {
+  const usuario = $('#inUsuario').value.trim();
+  const clave = $('#inClave').value;
+  const err = $('#ingresoError');
+  err.hidden = true;
+
+  if (!usuario || !clave) {
+    err.textContent = 'Escriba el usuario y la clave.';
+    err.hidden = false;
+    return;
+  }
+
+  const v = await verificar(usuario, clave);
+  if (!v) {
+    // Un solo mensaje para los dos casos: no decimos si el usuario existe
+    err.textContent = 'Usuario o clave incorrectos.';
+    err.hidden = false;
+    $('#inClave').value = '';
+    return;
+  }
+
+  await db.ajustar('sesion', {
+    usuario: v.usuario, nombre: v.nombre,
+    dispositivo: v.dispositivo, fecha: hoyISO()
+  });
+  // El celular se configura solo: nadie escribe M1 a mano
+  await db.ajustar('dispositivo', v.dispositivo);
+  await db.ajustar('vendedor', v.nombre);
+
+  $('#inClave').value = '';
+  $('#ingreso').hidden = true;
+  await arrancar();
+}
+
+async function salir() {
+  if (!confirm('¿Cerrar sesión? Las ventas guardadas no se pierden.')) return;
+  await db.ajustar('sesion', null);
+  location.reload();
+}
+
+$('#btnIngresar').addEventListener('click', entrar);
+$('#inClave').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+$('#btnSalir').addEventListener('click', salir);
 
 /* ================= Avisos ================= */
 function aviso(txt, tipo = 'ok') {
@@ -598,7 +655,22 @@ async function pintarAjustes() {
   $('#infoSemilla').textContent = cfg.seed_fecha
     ? `${productos.length} productos y ${clientesPC.length} clientes (${new Date(cfg.seed_fecha).toLocaleDateString('es-CO')})`
     : 'Sin cargar. La app no puede vender sin productos.';
-  $('#infoConsecutivo').textContent = `Próxima remisión: ${cfg.dispositivo || 'M?'}-${String((Number(cfg.consecutivo) || 0) + 1).padStart(3, '0')}`;
+  $('#infoConsecutivo').textContent = 'Próxima remisión: ' + (await db.proximoNumero());
+
+  const ses = await sesionActiva();
+  $('#infoSesion').hidden = !ses;
+  $('#btnSalir').hidden = !ses;
+  if (ses) {
+    $('#infoSesion').textContent =
+      `Sesión de ${ses.nombre} (${ses.usuario}) · celular ${ses.dispositivo}. ` +
+      'Vence al terminar el día.';
+    // Vienen del usuario: que nadie los cambie sin querer
+    $('#ajDispositivo').disabled = true;
+    $('#ajVendedor').disabled = true;
+  } else {
+    $('#ajDispositivo').disabled = false;
+    $('#ajVendedor').disabled = false;
+  }
   const r = await db.rutaDe(hoyISO());
   $('#infoRuta').textContent = r
     ? `Ruta cargada: ${r.dia_ruta} del ${fechaCorta(r.fecha)} · ${(r.clientes || []).length} clientes`
@@ -606,8 +678,10 @@ async function pintarAjustes() {
 }
 
 $('#btnGuardarAjustes').addEventListener('click', async () => {
-  await db.ajustar('dispositivo', $('#ajDispositivo').value.trim().toUpperCase());
-  await db.ajustar('vendedor', $('#ajVendedor').value.trim());
+  if (!(await sesionActiva())) {
+    await db.ajustar('dispositivo', $('#ajDispositivo').value.trim().toUpperCase());
+    await db.ajustar('vendedor', $('#ajVendedor').value.trim());
+  }
   await db.ajustar('empresa_nit', $('#ajNit').value.trim());
   await db.ajustar('empresa_tel', $('#ajTel').value.trim());
   await db.ajustar('empresa_lugar', $('#ajLugar').value.trim());
@@ -703,11 +777,28 @@ async function recargar() {
 
 $$('.nav button').forEach(b => b.addEventListener('click', () => ir(b.dataset.ir)));
 
-recargar().then(async () => {
-  if (!cfg.dispositivo) { ir('ajustes'); aviso('Configure el número de este celular para empezar.', 'mal'); }
-  else ir('vender');
+async function arrancar() {
+  await recargar();
+  if (!cfg.dispositivo) {
+    ir('ajustes');
+    aviso('Configure el número de este celular para empezar.', 'mal');
+  } else {
+    ir('vender');
+  }
   await revisarCompartido();
-});
+}
+
+/* Si hay vendedores definidos, primero se ingresa. Si el archivo de
+   usuarios está vacío la app abre directo, para no dejarla inservible
+   antes de que Daniel cree el primero. */
+(async () => {
+  if (hayUsuarios() && !(await sesionActiva())) {
+    $('#ingreso').hidden = false;
+    $('#inUsuario').focus();
+    return;
+  }
+  await arrancar();
+})();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => { });

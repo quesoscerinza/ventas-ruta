@@ -83,12 +83,26 @@ export async function ajustes() {
 }
 export const ajustar = (clave, valor) => guardar('ajustes', { clave, valor });
 
-/* ---------- Numeración: serie propia por celular, nunca choca con la del PC ---------- */
+/* ---------- Numeración: serie propia por celular, nunca choca con la del PC ----------
+   El consecutivo se guarda POR DISPOSITIVO. Si en un mismo teléfono
+   entrara otro vendedor con otro número asignado, cada serie sigue su
+   propia cuenta y no se pisan. */
 export async function siguienteNumero() {
   const a = await ajustes();
-  const n = (Number(a.consecutivo) || 0) + 1;
-  await ajustar('consecutivo', n);
-  return `${a.dispositivo || 'M?'}-${String(n).padStart(3, '0')}`;
+  const disp = a.dispositivo || 'M?';
+  const clave = `consecutivo_${disp}`;
+  // Los celulares de antes guardaban un solo 'consecutivo' sin sufijo
+  const actual = Number(a[clave] ?? a.consecutivo ?? 0);
+  const n = actual + 1;
+  await ajustar(clave, n);
+  return `${disp}-${String(n).padStart(3, '0')}`;
+}
+
+export async function proximoNumero() {
+  const a = await ajustes();
+  const disp = a.dispositivo || 'M?';
+  const n = Number(a[`consecutivo_${disp}`] ?? a.consecutivo ?? 0) + 1;
+  return `${disp}-${String(n).padStart(3, '0')}`;
 }
 
 /* ---------- La ruta del día que manda el PC ---------- */
