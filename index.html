@@ -19,7 +19,11 @@
     <label for="inUsuario">Usuario</label>
     <input id="inUsuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
     <label for="inClave">Clave</label>
-    <input id="inClave" type="password" autocomplete="current-password">
+    <div class="clave-caja">
+      <input id="inClave" type="password" autocomplete="current-password"
+             autocapitalize="none" autocorrect="off" spellcheck="false">
+      <button id="verClave" type="button" class="ojo" aria-label="Ver la clave">ver</button>
+    </div>
     <button id="btnIngresar" class="primario grande">Ingresar</button>
     <p id="ingresoError" class="ingreso-error" hidden></p>
     <p class="ingreso-pie">La sesión dura hasta el final del día.</p>
