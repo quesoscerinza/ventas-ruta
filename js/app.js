@@ -44,12 +44,19 @@ async function entrar() {
     return;
   }
 
-  const v = await verificar(usuario, clave);
+  // El teclado de Android suele meter un espacio al final después de
+  // autocompletar. Como la clave no se ve, sería imposible de notar.
+  let v = await verificar(usuario, clave);
+  if (!v && clave !== clave.trim()) v = await verificar(usuario, clave.trim());
+
   if (!v) {
-    // Un solo mensaje para los dos casos: no decimos si el usuario existe
-    err.textContent = 'Usuario o clave incorrectos.';
+    // Un solo mensaje para los dos casos: no revelamos si el usuario existe
+    err.innerHTML = 'Usuario o clave incorrectos.<br>' +
+      '<small>Toque «ver» para revisar la clave: el teclado a veces pone ' +
+      'mayúscula en la primera letra.</small>';
     err.hidden = false;
     $('#inClave').value = '';
+    $('#inClave').focus();
     return;
   }
 
@@ -75,6 +82,14 @@ async function salir() {
 $('#btnIngresar').addEventListener('click', entrar);
 $('#inClave').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
 $('#btnSalir').addEventListener('click', salir);
+
+$('#verClave').addEventListener('click', () => {
+  const campo = $('#inClave'), boton = $('#verClave');
+  const oculta = campo.type === 'password';
+  campo.type = oculta ? 'text' : 'password';
+  boton.textContent = oculta ? 'ocultar' : 'ver';
+  campo.focus();
+});
 
 /* ================= Avisos ================= */
 function aviso(txt, tipo = 'ok') {
