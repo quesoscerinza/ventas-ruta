@@ -607,11 +607,13 @@ async function armarCierre() {
 async function prepararCierre() {
   try {
     const datos = await armarCierre();
-    const nombre = `cierre_${cfg.dispositivo || 'M?'}_${datos.fecha}.json`;
-    const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' });
+    const nombre = `cierre_${cfg.dispositivo || 'M?'}_${datos.fecha}.txt`;
+    // text/plain y .txt: así cualquier Android lo abre, lo descarga
+    // y lo comparte. El PC lo reconoce por su contenido.
+    const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'text/plain' });
     cierreListo = {
       datos, nombre, blob,
-      archivo: new File([blob], nombre, { type: 'application/json' })
+      archivo: new File([blob], nombre, { type: 'text/plain' })
     };
   } catch (e) {
     cierreListo = null;
