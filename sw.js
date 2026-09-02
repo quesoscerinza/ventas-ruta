@@ -4,7 +4,7 @@
    Es lo que bota el caché viejo de todos los celulares y los obliga a
    recoger la versión nueva. Sin esto un celular puede quedarse semanas
    con la versión anterior sin que nadie se entere. */
-const VERSION = 13;
+const VERSION = 14;
 
 const CACHE = `cerinza-ruta-v${VERSION}`;
 const ARCHIVOS = [
@@ -16,6 +16,16 @@ const ARCHIVOS = [
 
 self.addEventListener('install', ev => {
   ev.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
+});
+
+/* La app pregunta qué versión está corriendo, y la respuesta sale de
+   ESTE archivo, el que de verdad está activo en el celular. Así el
+   número que se ve en pantalla es prueba de qué código está andando,
+   no una etiqueta suelta que se puede quedar vieja. */
+self.addEventListener('message', ev => {
+  if (ev.data && ev.data.tipo === 'version' && ev.ports && ev.ports[0]) {
+    ev.ports[0].postMessage({ version: VERSION });
+  }
 });
 
 self.addEventListener('activate', ev => {
