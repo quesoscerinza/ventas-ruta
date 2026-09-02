@@ -836,3 +836,28 @@ async function arrancar() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => { });
 }
+
+/* ================= Versión que está corriendo ================= */
+/* Se le pregunta al service worker activo. Si contesta, ese número es
+   el del código que de verdad está andando en este celular: sirve para
+   confirmar de un vistazo que una actualización sí llegó. */
+async function mostrarVersion() {
+  const donde = ['#cabVersion', '#ingresoVersion'].map(s => $(s)).filter(Boolean);
+  const poner = txt => donde.forEach(e => { e.textContent = txt; });
+
+  const sw = navigator.serviceWorker?.controller;
+  if (!sw) { poner('v1.·'); return; }   // aún sin controlar: se ve al recargar
+
+  const canal = new MessageChannel();
+  const respuesta = new Promise(resolver => {
+    canal.port1.onmessage = ev => resolver(ev.data?.version);
+    setTimeout(() => resolver(null), 1500);
+  });
+  sw.postMessage({ tipo: 'version' }, [canal.port2]);
+
+  const v = await respuesta;
+  poner(v ? `v1.${v}` : 'v1.·');
+}
+
+mostrarVersion();
+navigator.serviceWorker?.addEventListener?.('controllerchange', mostrarVersion);
