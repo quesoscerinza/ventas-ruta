@@ -612,11 +612,15 @@ function filasInventario() {
 
 function pintarListaInventario() {
   const todas = filasInventario();
-  const hechas = todas.filter(f => f.contado !== null).length;
+  // El avance se mide sobre los lotes que HAY que contar (los que tienen
+  // saldo). Contarlo sobre el histórico completo daría un número enorme
+  // que no refleja el trabajo real.
+  const aContar = todas.filter(f => f.sistema !== 0);
+  const hechas = aContar.filter(f => f.contado !== null).length;
   const difieren = todas.filter(f => f.contado !== null && f.contado !== f.sistema).length;
 
   $('#invAvance').innerHTML =
-    `<span>Contados</span><strong>${hechas} de ${todas.length}</strong>` +
+    `<span>Contados</span><strong>${hechas} de ${aContar.length}</strong>` +
     (difieren ? `<span class="dif">${difieren} con diferencia</span>` : '');
 
   const texto = normalizar($('#invBuscar').value);
@@ -627,12 +631,17 @@ function pintarListaInventario() {
   if (cat) vista = vista.filter(f => f.categoria === cat);
   if (texto) vista = vista.filter(f =>
     normalizar(f.nombre).includes(texto) || (f.lote || '').includes($('#invBuscar').value.trim()));
-  if (filtro === 'pendientes') vista = vista.filter(f => f.contado === null);
+  // Por defecto se ocultan los lotes agotados: son decenas por producto y
+  // solo estorban. Quedan a un toque en "Todos (con agotados)", por si un
+  // sobrante pertenece a alguno.
+  if (filtro === 'consaldo') vista = vista.filter(f => f.sistema !== 0 || f.contado !== null);
+  else if (filtro === 'pendientes') vista = vista.filter(f => f.sistema !== 0 && f.contado === null);
   else if (filtro === 'difieren') vista = vista.filter(f => f.contado !== null && f.contado !== f.sistema);
-  else if (filtro === 'problema') vista = vista.filter(f => f.sistema <= 0);
+  else if (filtro === 'negativo') vista = vista.filter(f => f.sistema < 0);
 
   if (!vista.length) {
-    $('#invLista').innerHTML = '<p class="vacio">Nada con ese filtro.</p>';
+    $('#invLista').innerHTML =
+      '<p class="vacio">Nada con ese filtro. Pruebe «Todos (con agotados)».</p>';
     return;
   }
 
