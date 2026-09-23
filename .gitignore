@@ -11,3 +11,12 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# Archivos de intercambio con datos reales (nunca se suben)
+semilla_*.txt
+cierre_*.txt
+conteo_*.txt
+inventario_*.txt
+
+# El de ejemplo sí se queda: lleva datos inventados y sirve para probar
+!semilla_ejemplo.txt
