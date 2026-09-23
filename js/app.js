@@ -603,6 +603,12 @@ function filasInventario() {
         producto_id: p.producto_id, nombre: p.nombre, categoria: p.categoria,
         lote: l.lote, sistema: Number(l.sistema) || 0,
         contado: c ? c.contado : null,
+        // Renglones que no se pueden ajustar tal cual: el bucket SIN LOTE
+        // (salidas registradas sin lote) y los lotes mal escritos. Hay que
+        // decir a qué lote real pertenece lo contado.
+        sucio: !!l.sucio,
+        requiereLote: !!l.requiere_lote,
+        loteConfirmado: c ? (c.lote_confirmado || '') : '',
         clave: k,
       });
     }
@@ -657,9 +663,12 @@ function pintarListaInventario() {
     const dif = f.contado === null ? '' :
       (f.contado === f.sistema ? '✓' :
        `${f.contado - f.sistema > 0 ? '+' : ''}${f.contado - f.sistema}`);
+    const etiqueta = f.lote || SIN_LOTE_TXT;
+    const marca = f.sucio ? '<span class="inv-marca">mal escrito</span>'
+                : (f.requiereLote ? '<span class="inv-marca">sin lote</span>' : '');
     html += `
-    <div class="inv-fila ${estado}">
-      <span class="inv-lote">${f.lote || SIN_LOTE_TXT}</span>
+    <div class="inv-fila ${estado}${f.requiereLote ? ' ojo' : ''}">
+      <span class="inv-lote">${etiqueta}${marca}</span>
       <span class="inv-sis">${f.sistema}</span>
       <input class="inv-cant" type="number" inputmode="numeric" min="0"
              data-clave="${f.clave}" data-pid="${f.producto_id}"
@@ -667,6 +676,18 @@ function pintarListaInventario() {
              value="${f.contado === null ? '' : f.contado}" placeholder="—">
       <span class="inv-dif">${dif}</span>
     </div>`;
+    // Cuando el renglón no tiene un lote válido hay que decir a cuál va la
+    // diferencia. Solo aparece si ya se contó algo: antes no hace falta.
+    if (f.requiereLote && f.contado !== null && f.contado !== f.sistema) {
+      html += `
+      <div class="inv-confirmar">
+        <label>¿De qué lote son esas ${f.contado} unidades?</label>
+        <input class="inv-lote-conf" type="text" inputmode="numeric"
+               maxlength="8" placeholder="DDMMYYYY"
+               data-pid="${f.producto_id}" data-lote="${f.lote}"
+               value="${f.loteConfirmado}">
+      </div>`;
+    }
   }
   if (vista.length > 400) {
     html += `<p class="vacio">Se muestran 400 de ${vista.length}. Filtre por categoría.</p>`;
@@ -695,12 +716,37 @@ function pintarListaInventario() {
    no se pierde nada de lo contado. */
 $('#invLista').addEventListener('change', async e => {
   const inp = e.target;
+
+  // El lote que confirma a qué pertenece lo contado en un renglón
+  // "SIN LOTE" o con el lote mal escrito.
+  if (inp.classList.contains('inv-lote-conf')) {
+    const lote = inp.value.trim();
+    if (lote && !/^\d{8}$/.test(lote)) {
+      aviso('El lote va solo con su fecha, ocho números: DDMMYYYY.', 'mal');
+      inp.value = '';
+      return;
+    }
+    const k = claveL(Number(inp.dataset.pid), inp.dataset.lote);
+    const c = conteos[k];
+    if (!c) return;
+    await db.contarLote(
+      inventario.fecha, Number(inp.dataset.pid), inp.dataset.lote, c.contado,
+      { sistema_al_contar: c.sistema_al_contar, lote_confirmado: lote }
+    );
+    conteos = await db.conteosDe(inventario.fecha);
+    prepararConteo();
+    return;
+  }
+
   if (!inp.classList.contains('inv-cant')) return;
   const v = inp.value.trim();
+  const k = claveL(Number(inp.dataset.pid), inp.dataset.lote);
+  const previo = conteos[k];
   await db.contarLote(
     inventario.fecha, Number(inp.dataset.pid), inp.dataset.lote,
     v === '' ? null : Number(v),
-    { sistema_al_contar: Number(inp.dataset.sistema) }
+    { sistema_al_contar: Number(inp.dataset.sistema),
+      ...(previo?.lote_confirmado ? { lote_confirmado: previo.lote_confirmado } : {}) }
   );
   conteos = await db.conteosDe(inventario.fecha);
   pintarListaInventario();
@@ -767,6 +813,7 @@ async function prepararConteo() {
         lote: c.lote,
         contado: c.contado,
         sistema_al_contar: c.sistema_al_contar,
+        ...(c.lote_confirmado ? { lote_confirmado: c.lote_confirmado } : {}),
         ...(c.lote_nuevo ? { lote_nuevo: true } : {})
       }))
     };
