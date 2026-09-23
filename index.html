@@ -144,6 +144,42 @@
   <button id="btnGuardarCarga" class="primario grande">Guardar carga</button>
 </section>
 
+<!-- ============ INVENTARIO ============ -->
+<section class="pantalla" data-pantalla="inventario" hidden>
+  <h2>Inventario del cuarto frío</h2>
+  <p id="invCabecera" class="explica"></p>
+
+  <div id="invVacio" class="explica" hidden>
+    Todavía no ha cargado el inventario. Se lo manda inQC por WhatsApp y se
+    carga en Ajustes, igual que la semilla.
+  </div>
+
+  <div id="invCuerpo" hidden>
+    <div class="avance" id="invAvance"></div>
+    <input id="invBuscar" type="search" placeholder="Buscar producto o lote" autocomplete="off">
+    <div class="dos">
+      <div>
+        <label for="invCategoria">Categoría</label>
+        <select id="invCategoria"></select>
+      </div>
+      <div>
+        <label for="invFiltro">Mostrar</label>
+        <select id="invFiltro">
+          <option value="todos">Todos</option>
+          <option value="pendientes">Sin contar</option>
+          <option value="difieren">Con diferencia</option>
+          <option value="problema">En cero o negativo</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="invLista" class="inv-lista"></div>
+
+    <button id="btnEnviarConteo" class="primario grande">Enviar el conteo al PC</button>
+    <button id="btnLimpiarConteo" class="peligro">Borrar lo contado hoy</button>
+  </div>
+</section>
+
 <!-- ============ AJUSTES ============ -->
 <section class="pantalla" data-pantalla="ajustes" hidden>
   <h2>Ajustes</h2>
@@ -170,6 +206,7 @@
     <legend>Archivos que manda el PC</legend>
     <p class="nota" id="infoSemilla"></p>
     <p class="nota" id="infoRuta"></p>
+    <p class="nota" id="infoInventario" hidden></p>
     <label for="archivoSemilla">Cargar archivo (semilla o ruta del día)</label>
     <input id="archivoSemilla" type="file">
     <p class="nota">Más fácil: en WhatsApp toque el archivo, luego Compartir,
@@ -197,6 +234,7 @@
   <button data-ir="ruta">Ruta</button>
   <button data-ir="dia">Hoy</button>
   <button data-ir="carga">Carga</button>
+  <button data-ir="inventario" data-rol="inventario" hidden>Cámara</button>
   <button data-ir="ajustes">Ajustes</button>
 </nav>
 
