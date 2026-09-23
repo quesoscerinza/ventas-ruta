@@ -17,6 +17,10 @@
    de verdad protege un celular perdido es el bloqueo de pantalla de
    Android. */
 
+/* roles: 'ventas' (vender en la calle) e 'inventario' (contar el cuarto
+   frío). Si un usuario no trae roles, se asume solo 'ventas' — así los
+   vendedores que ya existen siguen igual y nadie ve el inventario por
+   accidente. */
 export const USUARIOS = [
   // Ejemplo — reemplácelo por los vendedores reales.
   // La clave de este ejemplo es: cerinza2026
@@ -48,6 +52,7 @@ export const USUARIOS = [
     usuario: 'daniel',
     nombre: 'daniel',
     dispositivo: 'M5',
+    roles: ['ventas', 'inventario'],
     hash: 'c6055aa50767472d3c2c47bcd88f9041ec84ae5a03f1a5054943862e046b3be0'
   },
 ];
@@ -74,3 +79,7 @@ export async function verificar(usuario, clave) {
 }
 
 export const hayUsuarios = () => USUARIOS.length > 0;
+
+/** Los roles de un usuario. Sin roles declarados: solo ventas. */
+export const rolesDe = u => (u && u.roles && u.roles.length) ? u.roles : ['ventas'];
+export const puede = (u, rol) => rolesDe(u).includes(rol);

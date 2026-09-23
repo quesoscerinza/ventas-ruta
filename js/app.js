@@ -6,7 +6,7 @@ import * as impresora from './printer.js';
 import * as ticket from './ticket.js';
 import { Ticket } from './escpos.js';
 import { uuid, pesos, hoyISO, fechaCorta, parecidos, normalizar } from './util.js';
-import { verificar, hayUsuarios } from './usuarios.js';
+import { verificar, hayUsuarios, puede } from './usuarios.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -18,6 +18,8 @@ let carrito = [];          // [{codigo, nombre, precio, cant, subtotal}]
 let clienteActual = null;  // {uuid, nombre, doc, tel, dir, pueblo, dia_ruta, nuevo}
 let rutaHoy = null;        // el consolidado que mandó el PC
 let subRuta = 'productos'; // pestaña activa dentro de Ruta
+let inventario = null;     // el stock por lote que mandó inQC
+let conteos = {};          // lo que se lleva contado, por producto|lote
 let cierreListo = null;    // el archivo del día, armado de antemano
 
 /* ================= Sesión ================= */
@@ -62,7 +64,8 @@ async function entrar() {
 
   await db.ajustar('sesion', {
     usuario: v.usuario, nombre: v.nombre,
-    dispositivo: v.dispositivo, fecha: hoyISO()
+    dispositivo: v.dispositivo, fecha: hoyISO(),
+    inventario: puede(v, 'inventario')
   });
   // El celular se configura solo: nadie escribe M1 a mano
   await db.ajustar('dispositivo', v.dispositivo);
@@ -109,6 +112,7 @@ function ir(pantalla) {
   if (pantalla === 'dia') pintarDia();
   if (pantalla === 'carga') pintarCarga();
   if (pantalla === 'ruta') pintarRuta();
+  if (pantalla === 'inventario') pintarInventario().then(prepararConteo);
 }
 
 /* ================= Estado de la impresora ================= */
@@ -553,6 +557,244 @@ async function alMarcar(e) {
 $('#listaRutaProductos').addEventListener('change', alMarcar);
 $('#listaRutaClientes').addEventListener('change', alMarcar);
 
+
+/* ================= Pantalla Inventario ================= */
+/* Contar el cuarto frío lote por lote. El celular no calcula diferencias
+   ni decide nada: solo recoge lo contado y lo manda. Las diferencias las
+   saca inQC contra el inventario del momento en que importa, que puede
+   haber cambiado mientras se contaba. */
+
+const claveL = (pid, lote) => `${pid}|${lote}`;
+const SIN_LOTE_TXT = 'SIN LOTE';
+
+async function pintarInventario() {
+  inventario = await db.inventarioDe(hoyISO());
+  $('#invVacio').hidden = !!inventario;
+  $('#invCuerpo').hidden = !inventario;
+  if (!inventario) { $('#invCabecera').textContent = ''; return; }
+
+  conteos = await db.conteosDe(inventario.fecha);
+
+  const vieja = inventario.fecha !== hoyISO();
+  $('#invCabecera').innerHTML =
+    `Inventario del <strong>${fechaCorta(inventario.fecha)}</strong>` +
+    (vieja ? ' <span class="marca-dup">no es de hoy</span>' : '');
+
+  // Categorías, una sola vez
+  const sel = $('#invCategoria');
+  if (!sel.dataset.listo) {
+    const cats = [...new Set(inventario.productos.map(p => p.categoria))].sort();
+    sel.innerHTML = '<option value="">Todas</option>' +
+      cats.map(c => `<option>${c}</option>`).join('');
+    sel.dataset.listo = '1';
+  }
+
+  pintarListaInventario();
+}
+
+function filasInventario() {
+  const filas = [];
+  for (const p of inventario.productos) {
+    const lotes = p.lotes.length ? p.lotes : [{ lote: '', sistema: 0 }];
+    for (const l of lotes) {
+      const k = claveL(p.producto_id, l.lote);
+      const c = conteos[k];
+      filas.push({
+        producto_id: p.producto_id, nombre: p.nombre, categoria: p.categoria,
+        lote: l.lote, sistema: Number(l.sistema) || 0,
+        contado: c ? c.contado : null,
+        clave: k,
+      });
+    }
+  }
+  return filas;
+}
+
+function pintarListaInventario() {
+  const todas = filasInventario();
+  const hechas = todas.filter(f => f.contado !== null).length;
+  const difieren = todas.filter(f => f.contado !== null && f.contado !== f.sistema).length;
+
+  $('#invAvance').innerHTML =
+    `<span>Contados</span><strong>${hechas} de ${todas.length}</strong>` +
+    (difieren ? `<span class="dif">${difieren} con diferencia</span>` : '');
+
+  const texto = normalizar($('#invBuscar').value);
+  const cat = $('#invCategoria').value;
+  const filtro = $('#invFiltro').value;
+
+  let vista = todas;
+  if (cat) vista = vista.filter(f => f.categoria === cat);
+  if (texto) vista = vista.filter(f =>
+    normalizar(f.nombre).includes(texto) || (f.lote || '').includes($('#invBuscar').value.trim()));
+  if (filtro === 'pendientes') vista = vista.filter(f => f.contado === null);
+  else if (filtro === 'difieren') vista = vista.filter(f => f.contado !== null && f.contado !== f.sistema);
+  else if (filtro === 'problema') vista = vista.filter(f => f.sistema <= 0);
+
+  if (!vista.length) {
+    $('#invLista').innerHTML = '<p class="vacio">Nada con ese filtro.</p>';
+    return;
+  }
+
+  // Agrupado por producto, para no repetir el nombre en cada lote
+  let html = '', ultimo = null;
+  for (const f of vista.slice(0, 400)) {
+    if (f.nombre !== ultimo) {
+      ultimo = f.nombre;
+      html += `<div class="inv-prod">${f.nombre}</div>`;
+    }
+    const estado = f.contado === null ? ''
+                 : (f.contado === f.sistema ? 'cuadra' : 'difiere');
+    const dif = f.contado === null ? '' :
+      (f.contado === f.sistema ? '✓' :
+       `${f.contado - f.sistema > 0 ? '+' : ''}${f.contado - f.sistema}`);
+    html += `
+    <div class="inv-fila ${estado}">
+      <span class="inv-lote">${f.lote || SIN_LOTE_TXT}</span>
+      <span class="inv-sis">${f.sistema}</span>
+      <input class="inv-cant" type="number" inputmode="numeric" min="0"
+             data-clave="${f.clave}" data-pid="${f.producto_id}"
+             data-lote="${f.lote}" data-sistema="${f.sistema}"
+             value="${f.contado === null ? '' : f.contado}" placeholder="—">
+      <span class="inv-dif">${dif}</span>
+    </div>`;
+  }
+  if (vista.length > 400) {
+    html += `<p class="vacio">Se muestran 400 de ${vista.length}. Filtre por categoría.</p>`;
+  }
+  html += `
+    <div class="inv-nuevo">
+      <label>¿Hay un lote que no está en la lista?</label>
+      <div class="dos">
+        <div><input id="invNuevoLote" type="text" placeholder="DDMMYYYY" inputmode="numeric"></div>
+        <div><input id="invNuevaCant" type="number" inputmode="numeric" min="0" placeholder="Cantidad"></div>
+      </div>
+      <select id="invNuevoProd"></select>
+      <button id="btnAgregarLote">Agregar ese lote</button>
+    </div>`;
+  $('#invLista').innerHTML = html;
+
+  // El selector de producto para el lote nuevo
+  const selP = $('#invNuevoProd');
+  if (selP) {
+    selP.innerHTML = '<option value="">¿De qué producto?</option>' +
+      inventario.productos.map(p => `<option value="${p.producto_id}">${p.nombre}</option>`).join('');
+  }
+}
+
+/* Cada número se guarda al momento: si el celular se apaga en la cámara,
+   no se pierde nada de lo contado. */
+$('#invLista').addEventListener('change', async e => {
+  const inp = e.target;
+  if (!inp.classList.contains('inv-cant')) return;
+  const v = inp.value.trim();
+  await db.contarLote(
+    inventario.fecha, Number(inp.dataset.pid), inp.dataset.lote,
+    v === '' ? null : Number(v),
+    { sistema_al_contar: Number(inp.dataset.sistema) }
+  );
+  conteos = await db.conteosDe(inventario.fecha);
+  pintarListaInventario();
+  prepararConteo();
+});
+
+$('#invLista').addEventListener('click', async e => {
+  if (e.target.id !== 'btnAgregarLote') return;
+  const lote = $('#invNuevoLote').value.trim();
+  const cant = $('#invNuevaCant').value.trim();
+  const pid = $('#invNuevoProd').value;
+  if (!pid) return aviso('Escoja de qué producto es ese lote.', 'mal');
+  if (!/^\d{8}$/.test(lote)) {
+    return aviso('El lote va solo con su fecha, ocho números: DDMMYYYY.', 'mal');
+  }
+  if (cant === '') return aviso('Falta la cantidad.', 'mal');
+
+  await db.contarLote(inventario.fecha, Number(pid), lote, Number(cant),
+                      { sistema_al_contar: 0, lote_nuevo: true });
+  // Se agrega a la lista para que quede a la vista
+  const prod = inventario.productos.find(p => p.producto_id === Number(pid));
+  if (prod && !prod.lotes.some(l => l.lote === lote)) {
+    prod.lotes.push({ lote, sistema: 0 });
+    await db.guardar('inventario', inventario);
+  }
+  conteos = await db.conteosDe(inventario.fecha);
+  aviso(`Lote ${lote} agregado con ${cant}.`);
+  pintarListaInventario();
+});
+
+['#invBuscar', '#invCategoria', '#invFiltro'].forEach(s => {
+  const el = $(s);
+  if (el) el.addEventListener('input', pintarListaInventario);
+});
+
+$('#btnLimpiarConteo').addEventListener('click', async () => {
+  if (!inventario) return;
+  if (!confirm('¿Borrar todo lo contado hoy? El inventario cargado no se pierde.')) return;
+  await db.borrarConteos(inventario.fecha);
+  conteos = {};
+  aviso('Conteo borrado.');
+  pintarListaInventario();
+});
+
+/* El archivo se arma por adelantado: Android solo deja abrir el menú de
+   Compartir como reacción inmediata al toque, y si el botón se pone a
+   leer la base primero, ese permiso se pierde. */
+let conteoListo = null;
+
+async function prepararConteo() {
+  try {
+    if (!inventario) { conteoListo = null; return; }
+    const mapa = await db.conteosDe(inventario.fecha);
+    const lista = Object.values(mapa);
+    const datos = {
+      formato: 'cerinza-conteo-v1',
+      fecha: inventario.fecha,
+      usuario: cfg.vendedor || '',
+      dispositivo: cfg.dispositivo || '',
+      generado: new Date().toISOString(),
+      inventario_generado: inventario.generado || '',
+      conteos: lista.map(c => ({
+        producto_id: c.producto_id,
+        lote: c.lote,
+        contado: c.contado,
+        sistema_al_contar: c.sistema_al_contar,
+        ...(c.lote_nuevo ? { lote_nuevo: true } : {})
+      }))
+    };
+    const nombre = `conteo_${inventario.fecha}.txt`;
+    const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'text/plain' });
+    conteoListo = { datos, nombre, blob, total: lista.length,
+                    archivo: new File([blob], nombre, { type: 'text/plain' }) };
+  } catch { conteoListo = null; }
+}
+
+$('#btnEnviarConteo').addEventListener('click', () => {
+  const c = conteoListo;
+  if (!c) { aviso('Un momento, estoy armando el archivo.', 'mal'); prepararConteo(); return; }
+  if (!c.total) { aviso('Todavía no ha contado nada.', 'mal'); return; }
+
+  // Ningún await antes de esta línea: es lo que mantiene vivo el permiso.
+  if (navigator.canShare?.({ files: [c.archivo] })) {
+    navigator.share({
+      files: [c.archivo],
+      title: 'Conteo ' + c.datos.fecha,
+      text: `Conteo del cuarto frío · ${c.total} lotes`
+    }).then(() => aviso('Enviado.'))
+      .catch(e => { if (e.name !== 'AbortError') descargar(c); });
+  } else {
+    descargar(c);
+  }
+});
+
+function descargar(c) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(c.blob);
+  a.download = c.nombre;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  aviso('Se descargó ' + c.nombre + '. Adjúntelo por WhatsApp.');
+}
+
 /* ================= Cierre y envío ================= */
 async function armarCierre() {
   const fecha = hoyISO();
@@ -692,6 +934,16 @@ async function pintarAjustes() {
   $('#infoRuta').textContent = r
     ? `Ruta cargada: ${r.dia_ruta} del ${fechaCorta(r.fecha)} · ${(r.clientes || []).length} clientes`
     : 'Sin ruta del día cargada.';
+
+  const ses2 = await sesionActiva();
+  const inv = (ses2 && ses2.inventario) ? await db.inventarioDe(hoyISO()) : null;
+  $('#infoInventario').hidden = !(ses2 && ses2.inventario);
+  if (ses2 && ses2.inventario) {
+    const n = inv ? Object.keys(await db.conteosDe(inv.fecha)).length : 0;
+    $('#infoInventario').textContent = inv
+      ? `Inventario del ${fechaCorta(inv.fecha)} · ${inv.productos.length} productos · ${n} lotes contados`
+      : 'Sin inventario del cuarto frío cargado.';
+  }
 }
 
 $('#btnGuardarAjustes').addEventListener('click', async () => {
@@ -715,7 +967,7 @@ async function procesarArchivo(texto) {
   // mandó solo el NOMBRE del archivo porque el documento todavía no
   // se había descargado en este celular.
   if (!limpio.startsWith('{')) {
-    if (/^semilla_|^ruta_|^cierre_/i.test(limpio) || limpio.length < 120) {
+    if (/^semilla_|^ruta_|^cierre_|^inventario_|^conteo_/i.test(limpio) || limpio.length < 120) {
       throw new Error(
         'Llegó el nombre del archivo, no el archivo. En WhatsApp toque ' +
         'primero el documento para descargarlo, y cuando ya esté en el ' +
@@ -726,10 +978,9 @@ async function procesarArchivo(texto) {
   }
 
   const datos = JSON.parse(limpio);
-    // Se reconoce por el contenido, no por el nombre: el vendedor no
-    // tiene que acordarse de cuál archivo va en cuál botón.
-  // Se reconoce por el contenido, no por el nombre: el vendedor no
-  // tiene que acordarse de cuál archivo va en cuál botón.
+
+  // Se reconoce por el contenido, no por el nombre: nadie tiene que
+  // acordarse de cuál archivo va en cuál botón.
   if (datos.formato === 'cerinza-ruta-v1') {
     const r = await db.cargarRuta(datos);
     await recargar();
@@ -739,8 +990,18 @@ async function procesarArchivo(texto) {
     const r = await db.cargarSemilla(datos);
     await recargar();
     aviso(`Semilla cargada: ${r.productos} productos, ${r.clientes} clientes.`);
+  } else if (datos.formato === 'cerinza-inv-v1') {
+    const ses = await sesionActiva();
+    if (!(ses && ses.inventario)) {
+      aviso('Ese es el inventario del cuarto frío y este usuario no lo maneja.', 'mal');
+      return;
+    }
+    const r = await db.cargarInventario(datos);
+    await recargar();
+    aviso(`Inventario del ${fechaCorta(r.fecha)} cargado: ${r.productos} productos, ${r.lotes} lotes.`);
+    ir('inventario');
   } else {
-    aviso('Ese archivo no lo reconozco. Debe ser la semilla o la ruta del día.', 'mal');
+    aviso('Ese archivo no lo reconozco. Debe ser la semilla, la ruta del día o el inventario.', 'mal');
   }
 }
 
@@ -803,6 +1064,15 @@ async function recargar() {
   $('#cliDia').innerHTML = '<option value="">Día de ruta sugerido…</option>' +
     dias.map(d => `<option>${d}</option>`).join('');
   $('#cabDispositivo').textContent = cfg.dispositivo || 'sin configurar';
+
+  // La pestaña de la cámara solo para quien tiene ese rol: un vendedor no
+  // tiene por qué ver ni ajustar el stock del cuarto frío.
+  const ses = await sesionActiva();
+  const conInv = !!(ses && ses.inventario);
+  const btnInv = $('.nav button[data-rol="inventario"]');
+  if (btnInv) btnInv.hidden = !conInv;
+  $('.nav').classList.toggle('nav-6', conInv);
+  $('.nav').classList.toggle('nav-5', !conInv);
   pintarBuscador();
   pintarCarrito();
   pintarAjustes();

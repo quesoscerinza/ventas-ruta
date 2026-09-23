@@ -7,7 +7,8 @@ const NOMBRE = 'cerinza_ruta';
 // Si no, en los celulares que ya tienen la base creada el navegador no
 // crea los almacenes nuevos y todo lo que los use falla.
 //   v2: se agregaron 'ruta' y 'entregas'
-const VERSION = 2;
+//   v3: se agregaron 'inventario' y 'conteos'
+const VERSION = 3;
 
 const TIENDAS = {
   ajustes: { keyPath: 'clave' },
@@ -17,7 +18,9 @@ const TIENDAS = {
   carga: { keyPath: 'fecha' },                           // lo que se lleva por día
   ventas: { keyPath: 'uuid' },
   ruta: { keyPath: 'fecha' },                            // el consolidado que manda el PC
-  entregas: { keyPath: 'clave' }                         // lo que el vendedor va marcando
+  entregas: { keyPath: 'clave' },                        // lo que el vendedor va marcando
+  inventario: { keyPath: 'fecha' },                      // el stock por lote que manda inQC
+  conteos: { keyPath: 'clave' }                          // lo contado en la cámara
 };
 
 let _db = null;
@@ -156,6 +159,66 @@ export async function marcasDe(fecha) {
     (mapa[m.tipo] || (mapa[m.tipo] = {}))[m.id] = m;
   }
   return mapa;
+}
+
+/* ---------- Inventario del cuarto frío ---------- */
+
+export async function cargarInventario(datos) {
+  if (datos.formato !== 'cerinza-inv-v1') {
+    throw new Error('El archivo no es un inventario de inQC.');
+  }
+  await guardar('inventario', {
+    fecha: datos.fecha,
+    generado: datos.generado,
+    productos: datos.productos || [],
+    resumen: datos.resumen || {}
+  });
+  return {
+    fecha: datos.fecha,
+    productos: (datos.productos || []).length,
+    lotes: (datos.resumen || {}).lotes || 0
+  };
+}
+
+/** El inventario de una fecha, o el más reciente que haya. */
+export async function inventarioDe(fecha) {
+  const exacto = await obtener('inventario', fecha);
+  if (exacto) return exacto;
+  const todos_ = await todos('inventario');
+  if (!todos_.length) return null;
+  return todos_.sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+}
+
+/* Cada lote contado se guarda apenas se escribe: si el celular se apaga
+   en la cámara, no se pierde el trabajo. */
+const claveConteo = (fecha, pid, lote) => `${fecha}|${pid}|${lote}`;
+
+export async function contarLote(fecha, producto_id, lote, contado, extra = {}) {
+  const clave = claveConteo(fecha, producto_id, lote);
+  if (contado === null || contado === undefined || contado === '') {
+    return borrar('conteos', clave);
+  }
+  return guardar('conteos', {
+    clave, fecha, producto_id, lote,
+    contado: Number(contado),
+    momento: new Date().toISOString(),
+    ...extra
+  });
+}
+
+export async function conteosDe(fecha) {
+  const todos_ = await todos('conteos');
+  const mapa = {};
+  for (const c of todos_) {
+    if (c.fecha === fecha) mapa[`${c.producto_id}|${c.lote}`] = c;
+  }
+  return mapa;
+}
+
+export async function borrarConteos(fecha) {
+  const todos_ = await todos('conteos');
+  await Promise.all(todos_.filter(c => c.fecha === fecha)
+                          .map(c => borrar('conteos', c.clave)));
 }
 
 /* ---------- Semilla que viene del PC ---------- */
