@@ -105,13 +105,12 @@ export const USUARIOS = [
     perfil: 'vendedor',
     hash: '0a7a5e5e0b6b44e64095ebd9c66f03cc0ea0fcc3c17fe003f64d8aed84003a38'
   },
-  {
-    usuario: 'Daniel Contreras',
-    nombre: 'Daniel C',
-    dispositivo: 'M5',
-    perfil: 'Analista',
-    hash: '83465377c1d107eb7db833fe65a4434b1c71f768fee111ecfdeabb77cff95bd3'   
-  },
+   { usuario: 'danielc',
+     nombre: 'Daniel Contreras',
+     dispositivo: 'M5', 
+     perfil: 'analista', 
+     hash: '5f5320f64fe7e299ad3382a69de17f23505e5c7b8d2e5e7986fcf0d86d00e579'
+   },
 ];
 
 
