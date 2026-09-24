@@ -6,7 +6,7 @@ import * as impresora from './printer.js';
 import * as ticket from './ticket.js';
 import { Ticket } from './escpos.js';
 import { uuid, pesos, hoyISO, fechaCorta, parecidos, normalizar } from './util.js';
-import { verificar, hayUsuarios, puede } from './usuarios.js';
+import { verificarCodigo, hayUsuarios, perfilDe, reglasDe, PERFILES } from './usuarios.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -35,37 +35,35 @@ async function sesionActiva() {
 }
 
 async function entrar() {
-  const usuario = $('#inUsuario').value.trim();
-  const clave = $('#inClave').value;
+  const codigo = $('#inClave').value;
   const err = $('#ingresoError');
   err.hidden = true;
 
-  if (!usuario || !clave) {
-    err.textContent = 'Escriba el usuario y la clave.';
+  if (!codigo.trim()) {
+    err.textContent = 'Escriba su código de ingreso.';
     err.hidden = false;
     return;
   }
 
-  // El teclado de Android suele meter un espacio al final después de
-  // autocompletar. Como la clave no se ve, sería imposible de notar.
-  let v = await verificar(usuario, clave);
-  if (!v && clave !== clave.trim()) v = await verificar(usuario, clave.trim());
-
-  if (!v) {
-    // Un solo mensaje para los dos casos: no revelamos si el usuario existe
-    err.innerHTML = 'Usuario o clave incorrectos.<br>' +
-      '<small>Toque «ver» para revisar la clave: el teclado a veces pone ' +
-      'mayúscula en la primera letra.</small>';
+  const r = await verificarCodigo(codigo);
+  if (!r.ok) {
+    err.innerHTML = r.motivo === 'repetido'
+      ? 'Ese código está asignado a dos personas.<br>' +
+        '<small>No se puede entrar así: las ventas quedarían a nombre de ' +
+        'otro. Avísele a Daniel para que lo cambie.</small>'
+      : 'Código incorrecto.<br>' +
+        '<small>Toque «ver» para revisarlo.</small>';
     err.hidden = false;
     $('#inClave').value = '';
     $('#inClave').focus();
     return;
   }
 
+  const v = r.usuario;
   await db.ajustar('sesion', {
     usuario: v.usuario, nombre: v.nombre,
     dispositivo: v.dispositivo, fecha: hoyISO(),
-    inventario: puede(v, 'inventario')
+    perfil: perfilDe(v)
   });
   // El celular se configura solo: nadie escribe M1 a mano
   await db.ajustar('dispositivo', v.dispositivo);
@@ -81,6 +79,89 @@ async function salir() {
   await db.ajustar('sesion', null);
   location.reload();
 }
+
+/* ================= Perfil ================= */
+/* El perfil viene pegado a la sesión, no se escoge. `vista` es lo que
+   se está mirando: normalmente es el mismo perfil, y solo el analista
+   puede ponerla en otro para revisar qué ve un gerente. Cambiar la
+   vista cambia la pantalla, nunca quién eres ni lo que quedó guardado. */
+
+let sesion = null;   // { usuario, nombre, dispositivo, fecha, perfil }
+let vista = 'vendedor';
+
+const reglas = () => reglasDe(vista);
+const soloLectura = () => !!reglas().soloLectura;
+
+function aplicarPerfil() {
+  const r = reglas();
+
+  $$('.nav button').forEach(b => {
+    b.hidden = !r.pantallas.includes(b.dataset.ir);
+  });
+  const nav = $('.nav');
+  nav.className = 'nav nav-' + r.pantallas.length;
+
+  // Lo que solo tiene sentido si se puede escribir
+  const editable = !r.soloLectura;
+  ['#invAcciones', '#invFiltroCaja'].forEach(s => {
+    const e = $(s); if (e) e.hidden = !editable;
+  });
+
+  const porTotal = r.inventario === 'total';
+  $('#invTitulo').textContent = porTotal
+    ? 'CF2 · Existencias' : 'CF2 · Inventario del cuarto frío';
+  $('#invBuscar').placeholder = porTotal ? 'Buscar producto' : 'Buscar producto o lote';
+  $('#invVacio').textContent = porTotal
+    ? 'Todavía no han cargado las existencias. Se las manda inQC por WhatsApp y '
+      + 'se cargan en Ajustes.'
+    : 'Todavía no ha cargado el inventario. Se lo manda inQC por WhatsApp y se '
+      + 'carga en Ajustes, igual que la semilla.';
+
+  pintarMenu();
+}
+
+function pintarMenu() {
+  if (!sesion) return;
+  const propio = reglasDe(sesion.perfil);
+  $('#menuNombre').textContent = sesion.nombre || sesion.usuario;
+  $('#menuPerfil').textContent = propio.etiqueta;
+  $('#menuDispositivo').textContent = 'Celular ' + (sesion.dispositivo || '—');
+
+  const otros = propio.verComo || [];
+  const caja = $('#menuVerComo');
+  caja.hidden = !otros.length;
+  if (!otros.length) return;
+
+  const sel = $('#menuVista');
+  if (!sel.dataset.listo) {
+    sel.innerHTML = [sesion.perfil, ...otros]
+      .map(p => `<option value="${p}">${PERFILES[p].etiqueta}</option>`).join('');
+    sel.dataset.listo = '1';
+  }
+  sel.value = vista;
+}
+
+function abrirMenu(abrir) {
+  $('#menuPanel').hidden = !abrir;
+  $('#menuFondo').hidden = !abrir;
+  $('#btnMenu').setAttribute('aria-expanded', String(abrir));
+  $('#btnMenu').classList.toggle('abierto', abrir);
+  if (abrir) pintarMenu();
+}
+
+$('#btnMenu').addEventListener('click', () => abrirMenu($('#menuPanel').hidden));
+$('#menuFondo').addEventListener('click', () => abrirMenu(false));
+
+$('#menuVista').addEventListener('change', async e => {
+  vista = e.target.value;
+  aplicarPerfil();
+  abrirMenu(false);
+  const r = reglas();
+  ir(r.pantallas.includes(pantallaActual) ? pantallaActual : r.inicio);
+  aviso(vista === sesion.perfil
+    ? 'Volvió a su vista normal.'
+    : `Viendo la app como ${PERFILES[vista].etiqueta}.`);
+});
 
 $('#btnIngresar').addEventListener('click', entrar);
 $('#inClave').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
@@ -105,7 +186,13 @@ function aviso(txt, tipo = 'ok') {
 }
 
 /* ================= Navegación ================= */
+let pantallaActual = 'vender';
+
 function ir(pantalla) {
+  // Una pantalla que el perfil no tiene no se abre ni por un enlace
+  // viejo ni por un botón que se quedó pintado por error.
+  if (!reglas().pantallas.includes(pantalla)) pantalla = reglas().inicio;
+  pantallaActual = pantalla;
   $$('.pantalla').forEach(p => p.hidden = p.dataset.pantalla !== pantalla);
   $$('.nav button').forEach(b => b.classList.toggle('activo', b.dataset.ir === pantalla));
   window.scrollTo(0, 0);
@@ -616,7 +703,59 @@ function filasInventario() {
   return filas;
 }
 
+/* ── Vista por total (perfil Administrativo) ──────────────────────────
+   El mismo archivo que recibe el analista, leído distinto: una línea por
+   producto con su existencia, sin lotes y sin nada que tocar. Gerencia
+   necesita saber cuánto hay, no de qué etiqueta es cada unidad.        */
+function pintarTotalesInventario() {
+  const texto = normalizar($('#invBuscar').value);
+  const cat = $('#invCategoria').value;
+
+  let prods = inventario.productos.map(p => ({
+    nombre: p.nombre,
+    categoria: p.categoria,
+    total: p.lotes.reduce((s, l) => s + (Number(l.sistema) || 0), 0),
+  }));
+  if (cat) prods = prods.filter(p => p.categoria === cat);
+  if (texto) prods = prods.filter(p => normalizar(p.nombre).includes(texto));
+
+  const conSaldo = prods.filter(p => p.total !== 0);
+  const enNegativo = prods.filter(p => p.total < 0).length;
+
+  $('#invAvance').innerHTML =
+    `<span>Con existencia</span><strong>${conSaldo.length} de ${prods.length}</strong>` +
+    (enNegativo ? `<span class="dif">${enNegativo} en negativo</span>` : '');
+
+  if (!prods.length) {
+    $('#invLista').innerHTML = '<p class="vacio">Nada con esa búsqueda.</p>';
+    return;
+  }
+
+  // Primero lo que tiene existencia; los ceros al final, que son los que
+  // menos dicen. Dentro de cada grupo, por categoría y nombre.
+  prods.sort((a, b) =>
+    (a.total === 0) - (b.total === 0) ||
+    a.categoria.localeCompare(b.categoria) ||
+    a.nombre.localeCompare(b.nombre));
+
+  let html = '', ultima = null;
+  for (const p of prods) {
+    if (p.categoria !== ultima) {
+      ultima = p.categoria;
+      html += `<div class="inv-prod">${p.categoria}</div>`;
+    }
+    const clase = p.total < 0 ? 'difiere' : (p.total === 0 ? 'inv-cero' : '');
+    html += `
+    <div class="inv-fila lectura ${clase}">
+      <span class="inv-lote">${p.nombre}</span>
+      <span class="inv-total">${p.total}</span>
+    </div>`;
+  }
+  $('#invLista').innerHTML = html;
+}
+
 function pintarListaInventario() {
+  if (reglas().inventario === 'total') return pintarTotalesInventario();
   const todas = filasInventario();
   // El avance se mide sobre los lotes que HAY que contar (los que tienen
   // saldo). Contarlo sobre el histórico completo daría un número enorme
@@ -716,6 +855,10 @@ function pintarListaInventario() {
    no se pierde nada de lo contado. */
 $('#invLista').addEventListener('change', async e => {
   const inp = e.target;
+  // El segundo candado. El primero es no pintar los campos; este atrapa
+  // cualquier descuido de maquetación, para que un gerente no pueda
+  // mover inventario ni sin querer.
+  if (soloLectura()) return;
 
   // El lote que confirma a qué pertenece lo contado en un renglón
   // "SIN LOTE" o con el lote mal escrito.
@@ -755,6 +898,7 @@ $('#invLista').addEventListener('change', async e => {
 
 $('#invLista').addEventListener('click', async e => {
   if (e.target.id !== 'btnAgregarLote') return;
+  if (soloLectura()) return;
   const lote = $('#invNuevoLote').value.trim();
   const cant = $('#invNuevaCant').value.trim();
   const pid = $('#invNuevoProd').value;
@@ -783,7 +927,7 @@ $('#invLista').addEventListener('click', async e => {
 });
 
 $('#btnLimpiarConteo').addEventListener('click', async () => {
-  if (!inventario) return;
+  if (soloLectura() || !inventario) return;
   if (!confirm('¿Borrar todo lo contado hoy? El inventario cargado no se pierde.')) return;
   await db.borrarConteos(inventario.fecha);
   conteos = {};
@@ -825,6 +969,7 @@ async function prepararConteo() {
 }
 
 $('#btnEnviarConteo').addEventListener('click', () => {
+  if (soloLectura()) return;
   const c = conteoListo;
   if (!c) { aviso('Un momento, estoy armando el archivo.', 'mal'); prepararConteo(); return; }
   if (!c.total) { aviso('Todavía no ha contado nada.', 'mal'); return; }
@@ -1047,14 +1192,17 @@ async function procesarArchivo(texto) {
     await recargar();
     aviso(`Semilla cargada: ${r.productos} productos, ${r.clientes} clientes.`);
   } else if (datos.formato === 'cerinza-inv-v1') {
-    const ses = await sesionActiva();
-    if (!(ses && ses.inventario)) {
-      aviso('Ese es el inventario del cuarto frío y este usuario no lo maneja.', 'mal');
+    // Analista y Administrativo reciben el MISMO archivo; lo que cambia
+    // es cómo lo lee cada perfil. Un vendedor no lo carga.
+    if (!reglas().inventario) {
+      aviso('Ese es el inventario del cuarto frío y este perfil no lo maneja.', 'mal');
       return;
     }
     const r = await db.cargarInventario(datos);
     await recargar();
-    aviso(`Inventario del ${fechaCorta(r.fecha)} cargado: ${r.productos} productos, ${r.lotes} lotes.`);
+    aviso(reglas().inventario === 'total'
+      ? `Existencias del ${fechaCorta(r.fecha)} cargadas: ${r.productos} productos.`
+      : `Inventario del ${fechaCorta(r.fecha)} cargado: ${r.productos} productos, ${r.lotes} lotes.`);
     ir('inventario');
   } else {
     aviso('Ese archivo no lo reconozco. Debe ser la semilla, la ruta del día o el inventario.', 'mal');
@@ -1121,14 +1269,15 @@ async function recargar() {
     dias.map(d => `<option>${d}</option>`).join('');
   $('#cabDispositivo').textContent = cfg.dispositivo || 'sin configurar';
 
-  // La pestaña de la cámara solo para quien tiene ese rol: un vendedor no
-  // tiene por qué ver ni ajustar el stock del cuarto frío.
-  const ses = await sesionActiva();
-  const conInv = !!(ses && ses.inventario);
-  const btnInv = $('.nav button[data-rol="inventario"]');
-  if (btnInv) btnInv.hidden = !conInv;
-  $('.nav').classList.toggle('nav-6', conInv);
-  $('.nav').classList.toggle('nav-5', !conInv);
+  // El perfil decide qué pestañas se ven. Sin sesión (archivo de
+  // usuarios vacío) se asume vendedor, que es el más limitado.
+  sesion = await sesionActiva();
+  const propio = sesion ? perfilDe(sesion) : 'vendedor';
+  // Se conserva la vista que eligió el analista mientras siga siendo
+  // una de las que su perfil puede previsualizar.
+  if (vista !== propio && !(reglasDe(propio).verComo || []).includes(vista)) vista = propio;
+  aplicarPerfil();
+
   pintarBuscador();
   pintarCarrito();
   pintarAjustes();
@@ -1138,11 +1287,11 @@ $$('.nav button').forEach(b => b.addEventListener('click', () => ir(b.dataset.ir
 
 async function arrancar() {
   await recargar();
-  if (!cfg.dispositivo) {
+  if (!cfg.dispositivo && reglas().pantallas.includes('ajustes')) {
     ir('ajustes');
     aviso('Configure el número de este celular para empezar.', 'mal');
   } else {
-    ir('vender');
+    ir(reglas().inicio);
   }
   await revisarCompartido();
 }
@@ -1153,7 +1302,7 @@ async function arrancar() {
 (async () => {
   if (hayUsuarios() && !(await sesionActiva())) {
     $('#ingreso').hidden = false;
-    $('#inUsuario').focus();
+    $('#inClave').focus();
     return;
   }
   await arrancar();
@@ -1168,7 +1317,8 @@ if ('serviceWorker' in navigator) {
    el del código que de verdad está andando en este celular: sirve para
    confirmar de un vistazo que una actualización sí llegó. */
 async function mostrarVersion() {
-  const donde = ['#cabVersion', '#ingresoVersion'].map(s => $(s)).filter(Boolean);
+  const donde = ['#cabVersion', '#ingresoVersion', '#menuVersion']
+    .map(s => $(s)).filter(Boolean);
   const poner = txt => donde.forEach(e => { e.textContent = txt; });
 
   const sw = navigator.serviceWorker?.controller;
