@@ -1,18 +1,21 @@
-/* Usuarios y perfiles — Quesos Cerinza
+/* Perfiles e ingreso — Quesos Cerinza
+
+   La maquinaria: qué ve cada perfil, cómo se arma la navegación y cómo
+   se verifica un código. Este archivo se actualiza cuando cambia la app.
+
+   LA LISTA DE PERSONAS NO ESTÁ ACÁ: está en js/gente.js, que es el
+   archivo que nunca hay que reemplazar por uno de afuera. Se separaron
+   porque una actualización de la app no tiene por qué tocar —ni borrar—
+   los usuarios reales de la empresa.
 
    Cada persona queda amarrada a su celular (M1, M2, …) y a un PERFIL.
    Al ingresar, la app se configura sola con ese número y con su nombre,
-   y se arma la pantalla que le corresponde a ese perfil. Nadie escribe
-   nada a mano ni puede equivocarse.
+   y se arma la pantalla que le corresponde. Nadie escribe nada a mano. */
 
-   El código NO se guarda aquí en texto: se guarda su huella SHA-256.
-   Para agregar o cambiar a alguien, corra en el PC:
+import { USUARIOS } from './gente.js';
+export { USUARIOS };
 
-       python generar_usuario.py
-
-   y pegue abajo la línea que le imprima.
-
-   OJO con lo que esto es y lo que no es: sirve para saber quién hizo
+/* OJO con lo que esto es y lo que no es: sirve para saber quién hizo
    cada cosa, para que el celular se configure solo y para que a cada
    quien le aparezca únicamente lo suyo. NO protege los datos: todo
    corre dentro del celular y el código fuente es público. Lo que de
@@ -111,53 +114,6 @@ export const PERFILES = {
 };
 
 export const PERFIL_POR_DEFECTO = 'vendedor';
-
-
-/* ══════════════════════════════════════════════════════════════════
-   USUARIOS
-   ══════════════════════════════════════════════════════════════════
-   Un renglón por persona. Si no trae `perfil`, se asume 'vendedor':
-   así nadie termina viendo de más por un olvido.
-
-   El código de ingreso de este ejemplo es: cerinza2026                */
-
-export const USUARIOS = [
-  {
-    usuario: 'alvaro',
-    nombre: 'Alvaro',
-    dispositivo: 'M1',
-    perfil: 'vendedor',
-    hash: 'c7581b3021aada5f32fa1b97c06ae97920d86ddfd1d9449a3721a595a34477ef'
-  },
-  {
-    usuario: 'paula',
-    nombre: 'paula',
-    dispositivo: 'M2',
-    perfil: 'vendedor',
-    hash: 'b2f5717460f9e32d7938944fa7b3f518aa0c448f0f55603d249f72ff7cb81c20'
-  },
-  {
-    usuario: 'diana',
-    nombre: 'diana',
-    dispositivo: 'M3',
-    perfil: 'vendedor',
-    hash: '594548d8744549dd581dcea4ae0a30434eead72e07d4adc48ad885a6127cbfc1'
-  },
-  {
-    usuario: 'pedro',
-    nombre: 'pedro',
-    dispositivo: 'M4',
-    perfil: 'vendedor',
-    hash: '0a7a5e5e0b6b44e64095ebd9c66f03cc0ea0fcc3c17fe003f64d8aed84003a38'
-  },
-  {
-    usuario: 'daniel',
-    nombre: 'daniel',
-    dispositivo: 'M5',
-    perfil: 'analista',
-    hash: 'c6055aa50767472d3c2c47bcd88f9041ec84ae5a03f1a5054943862e046b3be0'
-  },
-];
 
 
 /* ══════════════════════════════════════════════════════════════════
