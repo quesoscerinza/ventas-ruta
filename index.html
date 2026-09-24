@@ -71,6 +71,13 @@
   </div>
 </aside>
 
+<!-- Las sub-pestañas del grupo abierto. Una sola barra para toda la app:
+     la arma ir() a partir de GRUPOS en js/usuarios.js. Se esconde sola
+     cuando el grupo tiene una sola parte (Ajustes). Va antes del aviso
+     para que, al quedar los dos pegados al tope, el aviso caiga debajo
+     de la barra y no encima. -->
+<div class="subnav" id="subnavGrupo" hidden></div>
+
 <div id="aviso" class="aviso" hidden></div>
 
 <!-- ============ VENDER ============ -->
@@ -144,18 +151,16 @@
 <section class="pantalla" data-pantalla="ruta" hidden>
   <h2>Ruta del día</h2>
   <p id="rutaCabecera" class="explica"></p>
-
-  <div class="subnav" id="subnavRuta">
-    <button data-sub="productos" class="activo">Productos</button>
-    <button data-sub="clientes">Clientes</button>
-  </div>
-
   <div id="subProductos">
     <p class="explica">Marque cada producto a medida que lo va cargando al carro.</p>
     <div id="listaRutaProductos" class="chequeo"></div>
   </div>
+</section>
 
-  <div id="subClientes" hidden>
+<section class="pantalla" data-pantalla="entregas" hidden>
+  <h2>Entregas del día</h2>
+  <p id="entregasCabecera" class="explica"></p>
+  <div id="subClientes">
     <p class="explica">Marque cada cliente cuando le haya entregado su pedido.</p>
     <div id="listaRutaClientes" class="chequeo"></div>
   </div>
@@ -178,13 +183,6 @@
   <div id="invVacio" class="explica" hidden>
     Todavía no ha cargado el inventario. Se lo manda inQC por WhatsApp y se
     carga en Ajustes, igual que la semilla.
-  </div>
-
-  <!-- Solo el perfil Analista ve las sub-pestañas: gerencia únicamente
-       necesita las existencias de producto. -->
-  <div class="subnav" id="subnavCF2" hidden>
-    <button data-sub="producto" class="activo">Producto</button>
-    <button data-sub="insumos">Insumos</button>
   </div>
 
   <div id="invCuerpo" hidden>
@@ -214,9 +212,14 @@
       <button id="btnLimpiarConteo" class="peligro">Borrar lo contado hoy</button>
     </div>
   </div>
+</section>
 
-  <!-- ===== Insumos: qué pedir ===== -->
-  <div id="insCuerpo" hidden>
+<!-- ============ CF2 · INSUMOS (qué pedir) ============ -->
+<section class="pantalla" data-pantalla="insumos" hidden>
+  <h2>CF2 · Insumos</h2>
+  <p id="insCabecera" class="explica"></p>
+
+  <div id="insCuerpo">
     <p id="insVacio" class="explica" hidden>
       El archivo que cargó no trae el consumo de insumos. Vuelva a exportar
       el inventario desde inQC.
@@ -300,16 +303,9 @@
   <button id="btnGuardarAjustes" class="primario grande">Guardar ajustes</button>
 </section>
 
-<!-- Las pestañas que se ven las decide el perfil (js/usuarios.js).
-     Todas arrancan ocultas: aplicarPerfil() muestra las que tocan. -->
-<nav class="nav">
-  <button data-ir="vender" hidden>Vender</button>
-  <button data-ir="ruta" hidden>Ruta</button>
-  <button data-ir="dia" hidden>Hoy</button>
-  <button data-ir="carga" hidden>Carga</button>
-  <button data-ir="inventario" hidden>CF2</button>
-  <button data-ir="ajustes" hidden>Ajustes</button>
-</nav>
+<!-- Una pestaña por grupo. Cuáles se ven lo decide el perfil, y las
+     arma aplicarPerfil() a partir de GRUPOS en js/usuarios.js. -->
+<nav class="nav" id="nav"></nav>
 
 <script type="module" src="./js/app.js"></script>
 </body>
