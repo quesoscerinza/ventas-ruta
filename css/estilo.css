@@ -24,6 +24,12 @@
   --mal:#B91C1C;
   --mal-claro:#FEE2E2;
   --mono: ui-monospace,"SF Mono","Roboto Mono","DejaVu Sans Mono",monospace;
+  /* Alto del encabezado pegajoso, y de la barra de sub-pestañas cuando
+     está a la vista (la mide ir() y la escribe acá). Todo lo que se
+     pega al tope se apila con estas dos, en vez de repetir un 56px
+     suelto que se desencuadra en cuanto aparece otra barra. */
+  --tope:56px;
+  --subnav:0px;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -82,7 +88,7 @@ button:disabled{opacity:.35}
 
 /* --- Avisos --- */
 .aviso{
-  position:sticky;top:56px;z-index:9;
+  position:sticky;top:calc(var(--tope) + var(--subnav));z-index:9;
   border-radius:3px;border-left:4px solid var(--verde);background:var(--verde-claro);
   padding:10px 12px;font-size:13px;margin-bottom:12px;
 }
@@ -217,7 +223,15 @@ tr.alerta td{background:var(--mal-claro)}
 }
 
 /* --- Pestañas internas de la Ruta --- */
-.subnav{display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--linea)}
+/* Barra única de sub-pestañas, justo debajo del encabezado. Pegajosa al
+   tope para que al bajar por una lista larga —los lotes del CF2, las
+   ventas del día— siga a la vista de qué parte del grupo se está
+   mirando. El 56px es el alto del encabezado, que también es pegajoso. */
+.subnav{
+  position:sticky;top:var(--tope);z-index:10;
+  display:flex;gap:0;margin:0 -12px 12px;padding:0 12px;
+  background:var(--fondo);border-bottom:2px solid var(--linea);
+}
 .subnav button{
   flex:1;margin:0;background:transparent;color:var(--ink-soft);border-radius:0;
   border-bottom:3px solid transparent;margin-bottom:-2px;padding:11px 4px;font-size:12.5px;
@@ -301,7 +315,7 @@ button.ojo{
 .inv-prod{
   background:var(--verde-hondo);color:#fff;font-size:12.5px;
   padding:8px 10px;margin-top:10px;border-radius:4px 4px 0 0;
-  position:sticky;top:56px;z-index:5;
+  position:sticky;top:calc(var(--tope) + var(--subnav));z-index:5;
 }
 .inv-fila{
   display:flex;align-items:center;gap:8px;background:var(--panel);
