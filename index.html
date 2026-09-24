@@ -145,7 +145,7 @@
   <h2>Ruta del día</h2>
   <p id="rutaCabecera" class="explica"></p>
 
-  <div class="subnav">
+  <div class="subnav" id="subnavRuta">
     <button data-sub="productos" class="activo">Productos</button>
     <button data-sub="clientes">Clientes</button>
   </div>
@@ -180,6 +180,13 @@
     carga en Ajustes, igual que la semilla.
   </div>
 
+  <!-- Solo el perfil Analista ve las sub-pestañas: gerencia únicamente
+       necesita las existencias de producto. -->
+  <div class="subnav" id="subnavCF2" hidden>
+    <button data-sub="producto" class="activo">Producto</button>
+    <button data-sub="insumos">Insumos</button>
+  </div>
+
   <div id="invCuerpo" hidden>
     <div class="avance" id="invAvance"></div>
     <input id="invBuscar" type="search" placeholder="Buscar producto o lote" autocomplete="off">
@@ -205,6 +212,42 @@
     <div id="invAcciones">
       <button id="btnEnviarConteo" class="primario grande">Enviar el conteo al PC</button>
       <button id="btnLimpiarConteo" class="peligro">Borrar lo contado hoy</button>
+    </div>
+  </div>
+
+  <!-- ===== Insumos: qué pedir ===== -->
+  <div id="insCuerpo" hidden>
+    <p id="insVacio" class="explica" hidden>
+      El archivo que cargó no trae el consumo de insumos. Vuelva a exportar
+      el inventario desde inQC.
+    </p>
+
+    <div id="insPanel">
+      <div class="dos">
+        <div>
+          <label for="insVentana">Promedio de</label>
+          <select id="insVentana">
+            <option value="1">1 semana</option>
+            <option value="2">2 semanas</option>
+            <option value="3">3 semanas</option>
+            <option value="4" selected>4 semanas</option>
+          </select>
+        </div>
+        <div>
+          <label for="insCobertura">Pedir para</label>
+          <select id="insCobertura">
+            <option value="2">2 semanas</option>
+            <option value="3">3 semanas</option>
+            <option value="4" selected>4 semanas</option>
+            <option value="6">6 semanas</option>
+            <option value="8">8 semanas</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="avance" id="insAvance"></div>
+      <div id="insLista" class="inv-lista"></div>
+      <p class="nota" id="insPie"></p>
     </div>
   </div>
 </section>
