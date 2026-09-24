@@ -6,7 +6,8 @@ import * as impresora from './printer.js';
 import * as ticket from './ticket.js';
 import { Ticket } from './escpos.js';
 import { uuid, pesos, hoyISO, fechaCorta, parecidos, normalizar } from './util.js';
-import { verificarCodigo, hayUsuarios, perfilDe, reglasDe, PERFILES } from './usuarios.js';
+import { verificarCodigo, hayUsuarios, perfilDe, reglasDe, partesDe, veLa, grupoDe,
+         PERFILES, GRUPOS } from './usuarios.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -17,7 +18,6 @@ let clientesPC = [];
 let carrito = [];          // [{codigo, nombre, precio, cant, subtotal}]
 let clienteActual = null;  // {uuid, nombre, doc, tel, dir, pueblo, dia_ruta, nuevo}
 let rutaHoy = null;        // el consolidado que mandó el PC
-let subRuta = 'productos'; // pestaña activa dentro de Ruta
 let inventario = null;     // el stock por lote que mandó inQC
 let conteos = {};          // lo que se lleva contado, por producto|lote
 let cierreListo = null;    // el archivo del día, armado de antemano
@@ -95,11 +95,13 @@ const soloLectura = () => !!reglas().soloLectura;
 function aplicarPerfil() {
   const r = reglas();
 
-  $$('.nav button').forEach(b => {
-    b.hidden = !r.pantallas.includes(b.dataset.ir);
-  });
-  const nav = $('.nav');
-  nav.className = 'nav nav-' + r.pantallas.length;
+  // La barra de abajo se arma desde GRUPOS: un botón por grupo, en el
+  // orden que declara el perfil.
+  const nav = $('#nav');
+  nav.innerHTML = r.grupos
+    .map(g => `<button data-grupo="${g}">${GRUPOS[g].etiqueta}</button>`).join('');
+  nav.className = 'nav nav-' + r.grupos.length;
+  $$('#nav button').forEach(b => b.addEventListener('click', () => irAGrupo(b.dataset.grupo)));
 
   // Lo que solo tiene sentido si se puede escribir
   const editable = !r.soloLectura;
@@ -157,7 +159,7 @@ $('#menuVista').addEventListener('change', async e => {
   aplicarPerfil();
   abrirMenu(false);
   const r = reglas();
-  ir(r.pantallas.includes(pantallaActual) ? pantallaActual : r.inicio);
+  ir(pantallaActual);   // ir() ya devuelve al inicio si esa vista no la tiene
   aviso(vista === sesion.perfil
     ? 'Volvió a su vista normal.'
     : `Viendo la app como ${PERFILES[vista].etiqueta}.`);
@@ -186,21 +188,58 @@ function aviso(txt, tipo = 'ok') {
 }
 
 /* ================= Navegación ================= */
+/* Dos niveles: la barra de abajo escoge el GRUPO (el momento del día) y
+   la de arriba la PARTE dentro de ese grupo. Un grupo de una sola parte
+   —Ajustes— no muestra la barra de arriba. */
+
 let pantallaActual = 'vender';
 
+/** Tocar una pestaña de abajo SIEMPRE lleva a la primera parte. Es a
+    propósito: si un vendedor se quedó mirando el cierre y lo llama un
+    cliente, al volver a «Ventas» tiene que encontrar la pantalla de
+    vender, no la de cerrar el día. */
+function irAGrupo(grupo) {
+  const partes = partesDe(vista, grupo);
+  if (partes.length) ir(partes[0].id);
+}
+
 function ir(pantalla) {
-  // Una pantalla que el perfil no tiene no se abre ni por un enlace
-  // viejo ni por un botón que se quedó pintado por error.
-  if (!reglas().pantallas.includes(pantalla)) pantalla = reglas().inicio;
+  // Una pantalla que el perfil no tiene no se abre ni por un botón que
+  // se quedó pintado por error ni por una llamada interna vieja.
+  if (!veLa(vista, pantalla)) {
+    const inicio = partesDe(vista, reglas().inicio);
+    pantalla = inicio.length ? inicio[0].id : 'ajustes';
+  }
   pantallaActual = pantalla;
+  const grupo = grupoDe(pantalla);
+
   $$('.pantalla').forEach(p => p.hidden = p.dataset.pantalla !== pantalla);
-  $$('.nav button').forEach(b => b.classList.toggle('activo', b.dataset.ir === pantalla));
+  $$('#nav button').forEach(b => b.classList.toggle('activo', b.dataset.grupo === grupo));
+
+  // La barra de sub-pestañas, armada para el grupo abierto
+  const partes = partesDe(vista, grupo);
+  const barra = $('#subnavGrupo');
+  barra.hidden = partes.length < 2;
+  barra.innerHTML = partes.length < 2 ? '' : partes.map(p =>
+    `<button data-pantalla="${p.id}"${p.id === pantalla ? ' class="activo"' : ''}>` +
+    `${p.etiqueta}</button>`).join('');
+  // Lo que se pega al tope se apila debajo de esta barra. Se mide, no se
+  // adivina: el alto cambia con el tamaño de letra del celular.
+  document.body.style.setProperty(
+    '--subnav', barra.hidden ? '0px' : barra.offsetHeight + 'px');
+
   window.scrollTo(0, 0);
   if (pantalla === 'dia') pintarDia();
   if (pantalla === 'carga') pintarCarga();
-  if (pantalla === 'ruta') pintarRuta();
+  if (pantalla === 'ruta' || pantalla === 'entregas') pintarRuta();
   if (pantalla === 'inventario') pintarInventario().then(prepararConteo);
+  if (pantalla === 'insumos') pintarInventario().then(pintarInsumos);
 }
+
+$('#subnavGrupo').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b && b.dataset.pantalla) ir(b.dataset.pantalla);
+});
 
 /* ================= Estado de la impresora ================= */
 impresora.alCambiar(e => {
@@ -569,29 +608,24 @@ $('#btnGuardarCarga').addEventListener('click', async () => {
 });
 
 /* ================= Pantalla Ruta ================= */
-/* Acotado a #subnavRuta: ahora CF2 también tiene sub-pestañas, y con el
-   selector suelto '.subnav button' un toque movía las dos pantallas. */
-$$('#subnavRuta button').forEach(b => b.addEventListener('click', () => {
-  subRuta = b.dataset.sub;
-  $$('#subnavRuta button').forEach(x => x.classList.toggle('activo', x === b));
-  $('#subProductos').hidden = subRuta !== 'productos';
-  $('#subClientes').hidden = subRuta !== 'clientes';
-}));
-
 async function pintarRuta() {
   rutaHoy = await db.rutaDe(hoyISO());
+  // Productos y Clientes son dos pantallas del mismo grupo y muestran la
+  // misma cabecera, así que se escriben las dos de una vez.
+  const cabeceras = ['#rutaCabecera', '#entregasCabecera'];
   if (!rutaHoy) {
-    $('#rutaCabecera').textContent =
-      'Todavía no ha cargado la ruta del día. Se la manda el PC por WhatsApp y se carga en Ajustes.';
+    const txt = 'Todavía no ha cargado la ruta del día. Se la manda el PC ' +
+                'por WhatsApp y se carga en Ajustes.';
+    cabeceras.forEach(s_ => { const e = $(s_); if (e) e.textContent = txt; });
     $('#listaRutaProductos').innerHTML = '';
     $('#listaRutaClientes').innerHTML = '';
     return;
   }
 
   const vieja = rutaHoy.fecha !== hoyISO();
-  $('#rutaCabecera').innerHTML =
-    `<strong>${rutaHoy.dia_ruta}</strong> · ${fechaCorta(rutaHoy.fecha)}` +
+  const cab = `<strong>${rutaHoy.dia_ruta}</strong> · ${fechaCorta(rutaHoy.fecha)}` +
     (vieja ? ' <span class="marca-dup">no es de hoy</span>' : '');
+  cabeceras.forEach(s_ => { const e = $(s_); if (e) e.innerHTML = cab; });
 
   const marcas = await db.marcasDe(rutaHoy.fecha);
   pintarChequeoProductos(marcas.producto || {});
@@ -660,19 +694,21 @@ async function pintarInventario() {
   inventario = await db.inventarioDe(hoyISO());
   if (!inventario) {
     $('#invCabecera').textContent = '';
-    $('#subnavCF2').hidden = true;
+    $('#insCabecera').textContent = '';
     $('#invVacio').hidden = false;
     $('#invCuerpo').hidden = true;
-    $('#insCuerpo').hidden = true;
     return;
   }
 
   conteos = await db.conteosDe(inventario.fecha);
+  $('#invVacio').hidden = true;
+  $('#invCuerpo').hidden = false;
 
   const vieja = inventario.fecha !== hoyISO();
-  $('#invCabecera').innerHTML =
-    `Inventario del <strong>${fechaCorta(inventario.fecha)}</strong>` +
+  const cab = `Inventario del <strong>${fechaCorta(inventario.fecha)}</strong>` +
     (vieja ? ' <span class="marca-dup">no es de hoy</span>' : '');
+  $('#invCabecera').innerHTML = cab;
+  $('#insCabecera').innerHTML = cab;
 
   // Categorías, una sola vez
   const sel = $('#invCategoria');
@@ -684,7 +720,6 @@ async function pintarInventario() {
   }
 
   pintarListaInventario();
-  pintarCF2();
 }
 
 function filasInventario() {
@@ -790,25 +825,6 @@ $('#insVentana').addEventListener('change', e => {
 $('#insCobertura').addEventListener('change', e => {
   insCobertura = Number(e.target.value); pintarInsumos();
 });
-
-let subCF2 = 'producto';
-$$('#subnavCF2 button').forEach(b => b.addEventListener('click', () => {
-  subCF2 = b.dataset.sub;
-  $$('#subnavCF2 button').forEach(x => x.classList.toggle('activo', x === b));
-  pintarCF2();
-}));
-
-/* Qué mitad de CF2 se muestra. Gerencia no tiene sub-pestañas: su perfil
-   solo ve existencias de producto. */
-function pintarCF2() {
-  const conInsumos = reglas().inventario === 'lotes';
-  $('#subnavCF2').hidden = !conInsumos;
-  const verInsumos = conInsumos && subCF2 === 'insumos';
-  $('#invVacio').hidden = true;
-  $('#invCuerpo').hidden = verInsumos;
-  $('#insCuerpo').hidden = !verInsumos;
-  if (verInsumos) pintarInsumos();
-}
 
 /* ── Vista por total (perfil Administrativo) ──────────────────────────
    El mismo archivo que recibe el analista, leído distinto: una línea por
@@ -1390,15 +1406,13 @@ async function recargar() {
   pintarAjustes();
 }
 
-$$('.nav button').forEach(b => b.addEventListener('click', () => ir(b.dataset.ir)));
-
 async function arrancar() {
   await recargar();
-  if (!cfg.dispositivo && reglas().pantallas.includes('ajustes')) {
+  if (!cfg.dispositivo && veLa(vista, 'ajustes')) {
     ir('ajustes');
     aviso('Configure el número de este celular para empezar.', 'mal');
   } else {
-    ir(reglas().inicio);
+    irAGrupo(reglas().inicio);
   }
   await revisarCompartido();
 }

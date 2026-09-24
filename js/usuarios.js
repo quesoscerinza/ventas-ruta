@@ -22,6 +22,51 @@
 
 
 /* ══════════════════════════════════════════════════════════════════
+   GRUPOS: la navegación de toda la app
+   ══════════════════════════════════════════════════════════════════
+   Abajo hay pocas pestañas, y cada una agrupa las pantallas del mismo
+   momento del día. Las partes se cambian con la barra de arriba.
+
+   La razón: un celular no aguanta seis botones abajo sin que el texto
+   empiece a cortarse, y «Vender» y «Hoy» —o «Ruta» y «Carga»— son el
+   mismo momento partido en dos. Cargar el carro es una sola escena:
+   lo que va despachado, lo que se lleva de más y a quién se le entrega.
+
+   `id` de cada parte = el data-pantalla de su <section> en index.html.
+   `soloLotes` marca las partes que solo ve quien maneja el cuarto frío
+   etiqueta por etiqueta (el Analista), no quien solo consulta totales. */
+
+export const GRUPOS = {
+  ventas: {
+    etiqueta: 'Ventas',
+    partes: [
+      { id: 'vender', etiqueta: 'Vender' },
+      { id: 'dia', etiqueta: 'Hoy' },
+    ],
+  },
+  ruta: {
+    etiqueta: 'Ruta',
+    partes: [
+      { id: 'ruta', etiqueta: 'Productos' },
+      { id: 'carga', etiqueta: 'Carga' },
+      { id: 'entregas', etiqueta: 'Clientes' },
+    ],
+  },
+  cf2: {
+    etiqueta: 'CF2',
+    partes: [
+      { id: 'inventario', etiqueta: 'Producto' },
+      { id: 'insumos', etiqueta: 'Insumos', soloLotes: true },
+    ],
+  },
+  ajustes: {
+    etiqueta: 'Ajustes',
+    partes: [{ id: 'ajustes', etiqueta: 'Ajustes' }],
+  },
+};
+
+
+/* ══════════════════════════════════════════════════════════════════
    PERFILES
    ══════════════════════════════════════════════════════════════════
    Un solo lugar donde se declara qué ve y qué puede hacer cada quien.
@@ -29,8 +74,8 @@
    perfil es una línea acá. Los reportes que vengan después se cuelgan
    de esta misma tabla.
 
-   pantallas   → las pestañas que aparecen, en ese orden.
-   inicio      → en cuál abre la app al ingresar.
+   grupos      → las pestañas de abajo, en ese orden.
+   inicio      → en cuál grupo abre la app al ingresar.
    inventario  → 'lotes'  ve etiqueta por etiqueta y puede contar
                  'total'  ve solo el total por producto
                  null     no ve el cuarto frío
@@ -41,24 +86,24 @@
 export const PERFILES = {
   analista: {
     etiqueta: 'Analista',
-    pantallas: ['vender', 'ruta', 'dia', 'carga', 'inventario', 'ajustes'],
-    inicio: 'vender',
+    grupos: ['ventas', 'ruta', 'cf2', 'ajustes'],
+    inicio: 'ventas',
     inventario: 'lotes',
     soloLectura: false,
     verComo: ['administrativo'],
   },
   administrativo: {
     etiqueta: 'Administrativo',
-    pantallas: ['inventario', 'ajustes'],
-    inicio: 'inventario',
+    grupos: ['cf2', 'ajustes'],
+    inicio: 'cf2',
     inventario: 'total',
     soloLectura: true,
     verComo: [],
   },
   vendedor: {
     etiqueta: 'Vendedor',
-    pantallas: ['vender', 'ruta', 'dia', 'carga', 'ajustes'],
-    inicio: 'vender',
+    grupos: ['ventas', 'ruta', 'ajustes'],
+    inicio: 'ventas',
     inventario: null,
     soloLectura: false,
     verComo: [],
@@ -105,12 +150,13 @@ export const USUARIOS = [
     perfil: 'vendedor',
     hash: '0a7a5e5e0b6b44e64095ebd9c66f03cc0ea0fcc3c17fe003f64d8aed84003a38'
   },
-   { usuario: 'danielc',
-     nombre: 'Daniel Contreras',
-     dispositivo: 'M5', 
-     perfil: 'analista', 
-     hash: '5f5320f64fe7e299ad3382a69de17f23505e5c7b8d2e5e7986fcf0d86d00e579'
-   },
+  {
+    usuario: 'daniel',
+    nombre: 'daniel',
+    dispositivo: 'M5',
+    perfil: 'analista',
+    hash: 'c6055aa50767472d3c2c47bcd88f9041ec84ae5a03f1a5054943862e046b3be0'
+  },
 ];
 
 
@@ -182,5 +228,24 @@ export function reglasDe(algo) {
   return PERFILES[perfilDe(algo)];
 }
 
-/** ¿Este perfil ve esta pantalla? */
-export const veLa = (perfil, pantalla) => reglasDe(perfil).pantallas.includes(pantalla);
+/** Las partes de un grupo que este perfil puede ver. */
+export function partesDe(perfil, grupo) {
+  const g = GRUPOS[grupo];
+  if (!g) return [];
+  const conLotes = reglasDe(perfil).inventario === 'lotes';
+  return g.partes.filter(p => !p.soloLotes || conLotes);
+}
+
+/** ¿Este perfil ve esta pantalla? Busca en todos sus grupos. */
+export function veLa(perfil, pantalla) {
+  return reglasDe(perfil).grupos
+    .some(g => partesDe(perfil, g).some(p => p.id === pantalla));
+}
+
+/** El grupo al que pertenece una pantalla, o null. */
+export function grupoDe(pantalla) {
+  for (const [id, g] of Object.entries(GRUPOS)) {
+    if (g.partes.some(p => p.id === pantalla)) return id;
+  }
+  return null;
+}
