@@ -4,13 +4,14 @@
    Es lo que bota el caché viejo de todos los celulares y los obliga a
    recoger la versión nueva. Sin esto un celular puede quedarse semanas
    con la versión anterior sin que nadie se entere. */
-const VERSION = 22;
+const VERSION = 23;
 
 const CACHE = `cerinza-ruta-v${VERSION}`;
 const ARCHIVOS = [
   './', './index.html', './manifest.json',
   './css/estilo.css',
-  './js/app.js', './js/db.js', './js/util.js', './js/usuarios.js',
+  './js/app.js', './js/db.js', './js/util.js',
+  './js/usuarios.js', './js/gente.js',
   './js/escpos.js', './js/printer.js', './js/ticket.js'
 ];
 
