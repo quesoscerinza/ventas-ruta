@@ -28,8 +28,11 @@
    Si no se pone perfil, se asume 'vendedor', que es el más limitado.  */
 
 export const USUARIOS = [
-  // ── Reemplace estos renglones por los de su empresa ──────────────
-  // El código de ingreso de este ejemplo es: cerinza2026
-  { usuario: 'ejemplo', nombre: 'Ejemplo', dispositivo: 'M0', perfil: 'vendedor',
-    hash: '7e2f4b0d6c1a8e3f5b9d2c4a6e8f0b1d3c5a7e9f2b4d6c8a0e2f4b6d8c0a2e4f' },
+  // ── Añadir usuarios
+   { usuario: 'danielc', 
+     nombre: 'Daniel Contreras',
+     dispositivo: 'M5', 
+     perfil: 'analista', 
+     hash: '5f5320f64fe7e299ad3382a69de17f23505e5c7b8d2e5e7986fcf0d86d00e579' 
+   },
 ];
