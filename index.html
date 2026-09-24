@@ -16,13 +16,12 @@
     <img src="./assets/logo.png" alt="" onerror="this.remove()">
     <h1>Quesos Cerinza</h1>
     <p>Ventas en ruta <span id="ingresoVersion" class="ver-login"></span></p>
-    <label for="inUsuario">Usuario</label>
-    <input id="inUsuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false">
-    <label for="inClave">Clave</label>
+    <label for="inClave">Código de ingreso</label>
     <div class="clave-caja">
-      <input id="inClave" type="password" autocomplete="current-password"
-             autocapitalize="none" autocorrect="off" spellcheck="false">
-      <button id="verClave" type="button" class="ojo" aria-label="Ver la clave">ver</button>
+      <input id="inClave" type="password" inputmode="numeric"
+             autocomplete="one-time-code" autocapitalize="none"
+             autocorrect="off" spellcheck="false">
+      <button id="verClave" type="button" class="ojo" aria-label="Ver el código">ver</button>
     </div>
     <button id="btnIngresar" class="primario grande">Ingresar</button>
     <p id="ingresoError" class="ingreso-error" hidden></p>
@@ -43,7 +42,34 @@
     <span class="luz" id="luzImpresora"></span>
     <span id="estadoImpresora">Impresora sin conectar</span>
   </div>
+  <button id="btnMenu" class="menu-boton" aria-label="Menú" aria-expanded="false">
+    <span></span><span></span><span></span>
+  </button>
 </header>
+
+<!-- Menú del perfil: quién soy, en qué celular, qué versión, y salir. -->
+<div id="menuFondo" class="menu-fondo" hidden></div>
+<aside id="menuPanel" class="menu-panel" hidden>
+  <div class="menu-quien">
+    <strong id="menuNombre">—</strong>
+    <span id="menuPerfil" class="menu-etiqueta">—</span>
+    <span id="menuDispositivo" class="menu-sub">—</span>
+  </div>
+
+  <div id="menuVerComo" hidden>
+    <label for="menuVista">Ver la app como</label>
+    <select id="menuVista"></select>
+    <p class="explica menu-explica">
+      Cambia lo que se ve en pantalla, no quién eres. Sirve para revisar
+      qué le aparece a otro perfil sin pedirle su código.
+    </p>
+  </div>
+
+  <div class="menu-pie">
+    <span id="menuVersion" class="ver"></span>
+    <button id="btnSalir" class="peligro">Cerrar sesión</button>
+  </div>
+</aside>
 
 <div id="aviso" class="aviso" hidden></div>
 
@@ -146,7 +172,7 @@
 
 <!-- ============ INVENTARIO ============ -->
 <section class="pantalla" data-pantalla="inventario" hidden>
-  <h2>Inventario del cuarto frío</h2>
+  <h2 id="invTitulo">CF2 · Inventario del cuarto frío</h2>
   <p id="invCabecera" class="explica"></p>
 
   <div id="invVacio" class="explica" hidden>
@@ -162,7 +188,7 @@
         <label for="invCategoria">Categoría</label>
         <select id="invCategoria"></select>
       </div>
-      <div>
+      <div id="invFiltroCaja">
         <label for="invFiltro">Mostrar</label>
         <select id="invFiltro">
           <option value="consaldo">Con saldo</option>
@@ -176,8 +202,10 @@
 
     <div id="invLista" class="inv-lista"></div>
 
-    <button id="btnEnviarConteo" class="primario grande">Enviar el conteo al PC</button>
-    <button id="btnLimpiarConteo" class="peligro">Borrar lo contado hoy</button>
+    <div id="invAcciones">
+      <button id="btnEnviarConteo" class="primario grande">Enviar el conteo al PC</button>
+      <button id="btnLimpiarConteo" class="peligro">Borrar lo contado hoy</button>
+    </div>
   </div>
 </section>
 
@@ -193,7 +221,6 @@
     <input id="ajVendedor" type="text">
     <p class="nota" id="infoConsecutivo"></p>
     <p class="nota" id="infoSesion" hidden></p>
-    <button id="btnSalir" hidden>Cerrar sesión</button>
   </fieldset>
 
   <fieldset>
@@ -230,13 +257,15 @@
   <button id="btnGuardarAjustes" class="primario grande">Guardar ajustes</button>
 </section>
 
-<nav class="nav nav-5">
-  <button data-ir="vender">Vender</button>
-  <button data-ir="ruta">Ruta</button>
-  <button data-ir="dia">Hoy</button>
-  <button data-ir="carga">Carga</button>
-  <button data-ir="inventario" data-rol="inventario" hidden>Cámara</button>
-  <button data-ir="ajustes">Ajustes</button>
+<!-- Las pestañas que se ven las decide el perfil (js/usuarios.js).
+     Todas arrancan ocultas: aplicarPerfil() muestra las que tocan. -->
+<nav class="nav">
+  <button data-ir="vender" hidden>Vender</button>
+  <button data-ir="ruta" hidden>Ruta</button>
+  <button data-ir="dia" hidden>Hoy</button>
+  <button data-ir="carga" hidden>Carga</button>
+  <button data-ir="inventario" hidden>CF2</button>
+  <button data-ir="ajustes" hidden>Ajustes</button>
 </nav>
 
 <script type="module" src="./js/app.js"></script>
