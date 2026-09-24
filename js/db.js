@@ -171,6 +171,10 @@ export async function cargarInventario(datos) {
     fecha: datos.fecha,
     generado: datos.generado,
     productos: datos.productos || [],
+    // Consumo de insumos semana por semana, para decidir pedidos. Viaja
+    // en el mismo archivo; solo el perfil Analista lo muestra.
+    insumos: datos.insumos || [],
+    semanas_insumos: datos.semanas_insumos || 0,
     resumen: datos.resumen || {}
   });
   return {

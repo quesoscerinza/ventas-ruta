@@ -569,9 +569,11 @@ $('#btnGuardarCarga').addEventListener('click', async () => {
 });
 
 /* ================= Pantalla Ruta ================= */
-$$('.subnav button').forEach(b => b.addEventListener('click', () => {
+/* Acotado a #subnavRuta: ahora CF2 también tiene sub-pestañas, y con el
+   selector suelto '.subnav button' un toque movía las dos pantallas. */
+$$('#subnavRuta button').forEach(b => b.addEventListener('click', () => {
   subRuta = b.dataset.sub;
-  $$('.subnav button').forEach(x => x.classList.toggle('activo', x === b));
+  $$('#subnavRuta button').forEach(x => x.classList.toggle('activo', x === b));
   $('#subProductos').hidden = subRuta !== 'productos';
   $('#subClientes').hidden = subRuta !== 'clientes';
 }));
@@ -656,9 +658,14 @@ const SIN_LOTE_TXT = 'SIN LOTE';
 
 async function pintarInventario() {
   inventario = await db.inventarioDe(hoyISO());
-  $('#invVacio').hidden = !!inventario;
-  $('#invCuerpo').hidden = !inventario;
-  if (!inventario) { $('#invCabecera').textContent = ''; return; }
+  if (!inventario) {
+    $('#invCabecera').textContent = '';
+    $('#subnavCF2').hidden = true;
+    $('#invVacio').hidden = false;
+    $('#invCuerpo').hidden = true;
+    $('#insCuerpo').hidden = true;
+    return;
+  }
 
   conteos = await db.conteosDe(inventario.fecha);
 
@@ -677,6 +684,7 @@ async function pintarInventario() {
   }
 
   pintarListaInventario();
+  pintarCF2();
 }
 
 function filasInventario() {
@@ -701,6 +709,105 @@ function filasInventario() {
     }
   }
   return filas;
+}
+
+/* ── Insumos: qué pedir ───────────────────────────────────────────────
+   El archivo trae el consumo semana por semana, no el promedio. El
+   promedio se saca acá, con la ventana que se elija, y por eso se puede
+   cambiar de opinión sin volver al PC.
+
+   Ventana corta → reacciona rápido a un cambio de ritmo, pero una semana
+   rara la desvía. Ventana larga → más estable, más lenta en notar que el
+   consumo subió. Por eso se elige, en vez de fijar una.                */
+
+let insVentana = 4;      // semanas que entran en el promedio
+let insCobertura = 4;    // semanas que se quieren cubrir con el pedido
+
+function filasInsumos() {
+  const lista = (inventario && inventario.insumos) || [];
+  return lista.map(i => {
+    const consumo = i.consumo || [];
+    const n = Math.min(insVentana, consumo.length) || 1;
+    const prom = consumo.slice(0, n).reduce((s, x) => s + (Number(x) || 0), 0) / n;
+    const stock = Number(i.stock) || 0;
+    // Semanas que aguanta el stock al ritmo del promedio. Sin consumo no
+    // hay ritmo que proyectar: eso es null, no "infinito".
+    const semanas = prom > 1e-9 ? stock / prom : null;
+    // Lo que hace falta para cubrir la cobertura elegida, sin bajar del
+    // mínimo que tenga fijado el insumo.
+    const objetivo = Math.max(prom * insCobertura, Number(i.stock_minimo) || 0);
+    const pedir = Math.max(0, Math.ceil(objetivo - stock));
+    return {
+      nombre: i.nombre, unidad: i.unidad || 'u', categoria: i.categoria || '',
+      prom: Math.round(prom * 10) / 10, stock, semanas, pedir,
+      sinDatos: consumo.slice(0, n).every(x => !Number(x)),
+    };
+  }).sort((a, b) =>
+    (a.semanas === null) - (b.semanas === null) || (a.semanas - b.semanas));
+}
+
+function pintarInsumos() {
+  const hay = inventario && (inventario.insumos || []).length;
+  $('#insVacio').hidden = !!hay;
+  $('#insPanel').hidden = !hay;
+  if (!hay) { $('#insLista').innerHTML = ''; $('#insAvance').innerHTML = ''; return; }
+
+  const filas = filasInsumos();
+  const urgentes = filas.filter(f => f.semanas !== null && f.semanas <= 2).length;
+  const aPedir = filas.filter(f => f.pedir > 0).length;
+
+  $('#insAvance').innerHTML =
+    `<span>Hay que pedir</span><strong>${aPedir} de ${filas.length}</strong>` +
+    (urgentes ? `<span class="dif">${urgentes} se acaban en 2 semanas</span>` : '');
+
+  let html = '';
+  for (const f of filas) {
+    const alerta = f.semanas !== null && f.semanas <= 2;
+    const sem = f.semanas === null ? '—' : (Math.round(f.semanas * 10) / 10) + ' sem';
+    html += `
+    <div class="ins-fila ${alerta ? 'urgente' : ''}">
+      <div class="ins-nombre">${f.nombre}</div>
+      <div class="ins-datos">
+        <span><em>Prom/sem</em>${f.prom}</span>
+        <span><em>Stock</em>${f.stock}</span>
+        <span class="${alerta ? 'ins-alerta' : ''}"><em>Alcanza</em>${sem}</span>
+        <span class="ins-pedir"><em>Pedir</em>${f.pedir || '—'}</span>
+      </div>
+    </div>`;
+  }
+  $('#insLista').innerHTML = html;
+
+  const semanasArchivo = inventario.semanas_insumos || 0;
+  $('#insPie').textContent =
+    `Promedio de ${insVentana} semana${insVentana > 1 ? 's' : ''}, para cubrir ` +
+    `${insCobertura}. El archivo trae ${semanasArchivo} semanas de consumo, ` +
+    `hasta el ${fechaCorta(inventario.fecha)}.`;
+}
+
+$('#insVentana').addEventListener('change', e => {
+  insVentana = Number(e.target.value); pintarInsumos();
+});
+$('#insCobertura').addEventListener('change', e => {
+  insCobertura = Number(e.target.value); pintarInsumos();
+});
+
+let subCF2 = 'producto';
+$$('#subnavCF2 button').forEach(b => b.addEventListener('click', () => {
+  subCF2 = b.dataset.sub;
+  $$('#subnavCF2 button').forEach(x => x.classList.toggle('activo', x === b));
+  pintarCF2();
+}));
+
+/* Qué mitad de CF2 se muestra. Gerencia no tiene sub-pestañas: su perfil
+   solo ve existencias de producto. */
+function pintarCF2() {
+  const conInsumos = reglas().inventario === 'lotes';
+  $('#subnavCF2').hidden = !conInsumos;
+  const verInsumos = conInsumos && subCF2 === 'insumos';
+  $('#invVacio').hidden = true;
+  $('#invCuerpo').hidden = verInsumos;
+  $('#insCuerpo').hidden = !verInsumos;
+  if (verInsumos) pintarInsumos();
 }
 
 /* ── Vista por total (perfil Administrativo) ──────────────────────────
