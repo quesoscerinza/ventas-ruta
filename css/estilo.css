@@ -324,6 +324,25 @@ button.ojo{
   background:var(--mal-claro);border:1px solid var(--linea);border-top:none;
   padding:8px 10px 10px;
 }
+/* --- Insumos: qué pedir --- */
+.ins-fila{
+  background:var(--panel);border:1px solid var(--linea);border-top:none;
+  padding:9px 10px;
+}
+.ins-fila.urgente{border-left:3px solid var(--mal)}
+.ins-nombre{font-size:13.5px;margin-bottom:6px}
+.ins-datos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.ins-datos span{
+  display:flex;flex-direction:column;gap:1px;
+  font-size:14px;font-weight:700;text-align:center;
+}
+.ins-datos em{font-style:normal;font-weight:400;font-size:10px;color:var(--ink-soft)}
+.ins-datos .ins-alerta{color:var(--mal)}
+/* --azul, no --azul-vivo: el vivo es para fondos oscuros y sobre panel
+   blanco casi no se lee. */
+.ins-datos .ins-pedir{color:var(--azul)}
+#insPie{margin-top:10px}
+
 /* Vista de solo lectura: existencias por producto, sin lotes */
 .inv-fila.lectura{justify-content:space-between}
 .inv-fila.inv-cero .inv-lote,
