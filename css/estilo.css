@@ -254,6 +254,9 @@ tr.alerta td{background:var(--mal-claro)}
 .chq .cant{font-weight:700;color:var(--verde-hondo);flex:none;font-size:15px}
 .chq.hecho{background:var(--verde-claro)}
 .chq.hecho .t1{text-decoration:line-through;opacity:.65}
+/* Las etiquetas de estado no se tachan: son lo que hay que leer
+   justamente en el renglón ya atendido. */
+.chq.hecho .t1 > span{text-decoration:none;opacity:1}
 .avance{
   display:flex;justify-content:space-between;align-items:center;
   background:var(--verde-hondo);color:#fff;padding:9px 12px;
@@ -371,3 +374,52 @@ button.ojo{
 }
 .inv-nuevo button{margin-top:8px;margin-bottom:0}
 .avance .dif{color:var(--ambar-claro);font-size:11.5px}
+
+/* --- Entrega de un pedido de la ruta --- */
+.chq.abrible{cursor:pointer}
+.chq.abrible:active{background:var(--verde-claro)}
+.ped-ok{background:var(--verde-claro);color:var(--verde);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:5px}
+.ped-no{background:var(--mal-claro);color:var(--mal);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:5px}
+.ped-ajuste{background:var(--ambar-claro);color:var(--amber);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:5px}
+
+button.volver{
+  background:transparent;color:var(--azul);margin:0 0 10px;padding:6px 0;
+  text-align:left;font-size:13.5px;
+}
+.ped-cabecera{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.ped-cabecera strong{font-size:17px}
+
+.ped-linea{
+  background:var(--panel);border:1px solid var(--linea);border-top:none;
+  padding:10px;
+}
+.ped-linea:first-child{border-top:1px solid var(--linea);border-radius:4px 4px 0 0}
+.ped-linea:last-child{border-radius:0 0 4px 4px}
+.ped-linea.tocada{border-left:3px solid var(--amber)}
+.ped-nombre{font-size:13.5px;margin-bottom:8px}
+.ped-menos{background:var(--mal-claro);color:var(--mal);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:4px}
+.ped-mas{background:var(--verde-claro);color:var(--verde);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:4px}
+.ped-datos{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;align-items:end}
+.ped-dato{display:flex;flex-direction:column;gap:1px;font-size:14px;font-weight:700}
+.ped-dato em,.ped-campo span{font-style:normal;font-weight:400;font-size:10px;color:var(--ink-soft)}
+.ped-campo{display:flex;flex-direction:column;gap:2px}
+.ped-campo input{margin:0;text-align:center;padding:9px 4px;font-size:16px}
+
+.ped-cuentas{
+  background:var(--panel);border:1px solid var(--linea);border-radius:4px;
+  padding:10px;margin:12px 0;
+}
+.ped-cuentas div{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:13px;padding:3px 0}
+.ped-cuentas .neto{border-top:1px solid var(--linea);margin-top:5px;padding-top:7px}
+.ped-cuentas .neto strong{font-size:19px;color:var(--verde-hondo)}
+.ped-cuentas .chico{color:var(--ink-soft);font-size:11.5px}
+#pedidoDetalle button{margin-top:8px}
+.ped-pesar{background:var(--ambar-claro);color:var(--amber);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:4px}
+.ped-linea.pesar{border-left:3px solid var(--amber)}
