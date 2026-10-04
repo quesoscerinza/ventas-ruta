@@ -8,7 +8,8 @@ const NOMBRE = 'cerinza_ruta';
 // crea los almacenes nuevos y todo lo que los use falla.
 //   v2: se agregaron 'ruta' y 'entregas'
 //   v3: se agregaron 'inventario' y 'conteos'
-const VERSION = 3;
+//   v4: se agregó 'pedidos' (la entrega de cada cliente de la ruta)
+const VERSION = 4;
 
 const TIENDAS = {
   ajustes: { keyPath: 'clave' },
@@ -20,7 +21,8 @@ const TIENDAS = {
   ruta: { keyPath: 'fecha' },                            // el consolidado que manda el PC
   entregas: { keyPath: 'clave' },                        // lo que el vendedor va marcando
   inventario: { keyPath: 'fecha' },                      // el stock por lote que manda inQC
-  conteos: { keyPath: 'clave' }                          // lo contado en la cámara
+  conteos: { keyPath: 'clave' },                         // lo contado en la cámara
+  pedidos: { keyPath: 'clave' }                          // la entrega de cada cliente
 };
 
 let _db = null;
@@ -117,6 +119,10 @@ export async function cargarRuta(datos) {
     fecha: datos.fecha,
     dia_ruta: datos.dia_ruta,
     generado: datos.generado,
+    // El PC la pone cuando el archivo trae precios e identificadores.
+    // Sin ella la ruta es solo lista de chequeo, como antes: así un
+    // archivo viejo sigue funcionando en un celular nuevo.
+    detalle: !!datos.detalle,
     productos: datos.productos || [],
     clientes: datos.clientes || [],
     carga: datos.carga || []
@@ -283,4 +289,148 @@ export async function cuadre(fecha) {
     filas.push({ id, codigo: it?.codigo || '', nombre: it?.nombre || id, cargado: 0, vendido: vend, sobrante: -vend, alerta: true });
   }
   return filas;
+}
+
+/* ---------- Entrega de los pedidos de la ruta ---------- */
+/* Un renglón por cliente y día. Guarda lo que de verdad se entregó, que
+   puede no ser lo que se pidió, y con qué pagó.
+
+   Lo que NO hace: decidir. El celular recoge; el PC aplica cada caso con
+   la función que ya tiene (devolución, actualización o no entregada). Así
+   no hay dos versiones de la misma regla de negocio. */
+
+export const clavePedido = (fecha, cliente_id) => `${fecha}|${cliente_id}`;
+
+/** Arma el pedido tal como vino del PC, sin tocar nada todavía. */
+export function pedidoDesdeRuta(cliente, fecha) {
+  return {
+    clave: clavePedido(fecha, cliente.cliente_id),
+    fecha,
+    cliente_id: cliente.cliente_id,
+    remision_id: cliente.remision_id ?? null,
+    numero_remision: cliente.numero_remision || '',
+    estado: 'pendiente',              // pendiente | entregado | no_entregado
+    pago: cliente.pago || 'pendiente',
+    monto_efectivo: 0,
+    nota: '',
+    lineas: (cliente.items || []).map(it => ({
+      item_id: it.item_id ?? null,
+      codigo: it.codigo || '',
+      nombre: it.nombre || '',
+      // `pedido` es lo que se cobra; los cambios son reposición y no se
+      // cobran, por eso viajan aparte y no se suman acá.
+      pedido: Number(it.cantidad ?? it.cant ?? 0),
+      cambios: Number(it.cambios || 0),
+      entregado: Number(it.cantidad ?? it.cant ?? 0),
+      precio: Number(it.precio || 0),
+      subtotal: Number(it.subtotal || 0),
+      obsequio: !!it.obsequio,
+      por_peso: !!it.por_peso,
+      peso_kg: it.peso_kg ?? null,
+    })),
+  };
+}
+
+/**
+ * El valor de una línea SEGÚN LO ENTREGADO. Una sola función para esto,
+ * y la usan tanto la cuenta como el ticket: si cada una hiciera su
+ * propia multiplicación, el papel y la cartera podrían decir cifras
+ * distintas del mismo pedido.
+ *
+ * En los productos que se venden por peso el precio es por kilo, así
+ * que el valor sale de los kilos que se entregaron, no de cuántos
+ * bloques. Eso además cierra el caso de los «pendientes por pesar»:
+ * salieron del PC con subtotal en cero y al anotar el peso en la calle
+ * quedan valorados.
+ */
+export function valorLinea(l) {
+  if (l.obsequio) return 0;
+  const precio = Number(l.precio) || 0;
+  if (l.por_peso) return Math.round(precio * (Number(l.peso_kg) || 0));
+  return Math.round(precio * (Number(l.entregado) || 0));
+}
+
+/** Un producto por peso que todavía no se ha pesado: no se sabe cuánto
+    vale, y eso NO es lo mismo que no haberlo entregado. */
+export const pendientePorPesar = l => !!l.por_peso && !(Number(l.peso_kg) || 0);
+
+/**
+ * Las cuentas de un pedido.
+ *
+ * El neto a cobrar es la SUMA DE LO ENTREGADO, no una resta sobre el
+ * pedido original. La diferencia importa en los productos por peso:
+ * salen del PC con subtotal en cero mientras nadie los ha pesado, y al
+ * anotar el peso en la calle el valor aparece. Eso no es «producto de
+ * más» — es el mismo queso, ahora valorado. Si el neto se calculara
+ * restando y sumando sobre el bruto, pesar un bloque se vería como un
+ * cobro extra.
+ *
+ * `devueltos` y `extras` van aparte, en CANTIDADES, porque son los dos
+ * hechos que el PC necesita para registrar cada caso con su función.
+ * Los montos que llevan son para mostrar en pantalla; la plata la
+ * vuelve a calcular el PC.
+ */
+export function cuentasPedido(pedido) {
+  const noEntregado = pedido.estado === 'no_entregado';
+  let bruto = 0, neto = 0;
+  const devueltos = [], extras = [];
+  let pendientes = 0;
+
+  for (const l of pedido.lineas) {
+    const sub = Number(l.subtotal) || 0;
+    bruto += sub;
+    if (noEntregado) continue;
+
+    neto += valorLinea(l);
+    if (pendientePorPesar(l)) { pendientes++; continue; }
+
+    const pedida = Number(l.pedido) || 0;
+    const entregada = Number(l.entregado) || 0;
+
+    const falta = Math.max(0, pedida - entregada);
+    if (falta > 0) {
+      // El monto se estima proporcional al pedido, igual que lo calcula
+      // guardar_devolucion_items() en el PC.
+      devueltos.push({
+        item_id: l.item_id, codigo: l.codigo, nombre: l.nombre,
+        cantidad: falta,
+        monto: pedida ? Math.round(sub * falta / pedida) : 0,
+      });
+    }
+
+    const deMas = Math.max(0, entregada - pedida);
+    if (deMas > 0) {
+      extras.push({
+        item_id: l.item_id, codigo: l.codigo, nombre: l.nombre,
+        cantidad: deMas,
+        monto: Math.round((Number(l.precio) || 0) * deMas),
+      });
+    }
+  }
+
+  bruto = Math.round(bruto);
+  neto = noEntregado ? 0 : Math.round(neto);
+
+  return {
+    bruto, neto, pendientes,
+    devolucion: noEntregado ? bruto : devueltos.reduce((s, d) => s + d.monto, 0),
+    extra: extras.reduce((s, x) => s + x.monto, 0),
+    devueltos, extras,
+    tocado: noEntregado || devueltos.length > 0 || extras.length > 0 || bruto !== neto,
+  };
+}
+
+export async function guardarPedido(pedido) {
+  return guardar('pedidos', { ...pedido, momento: new Date().toISOString() });
+}
+
+export async function pedidosDe(fecha) {
+  const todos_ = await todos('pedidos');
+  const mapa = {};
+  for (const p of todos_) if (p.fecha === fecha) mapa[p.cliente_id] = p;
+  return mapa;
+}
+
+export async function borrarPedido(fecha, cliente_id) {
+  return borrar('pedidos', clavePedido(fecha, cliente_id));
 }

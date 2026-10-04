@@ -18,6 +18,7 @@ let clientesPC = [];
 let carrito = [];          // [{codigo, nombre, precio, cant, subtotal}]
 let clienteActual = null;  // {uuid, nombre, doc, tel, dir, pueblo, dia_ruta, nuevo}
 let rutaHoy = null;        // el consolidado que mandó el PC
+let pedidos = {};          // la entrega de cada cliente de la ruta, por cliente_id
 let inventario = null;     // el stock por lote que mandó inQC
 let conteos = {};          // lo que se lleva contado, por producto|lote
 let cierreListo = null;    // el archivo del día, armado de antemano
@@ -227,6 +228,11 @@ function ir(pantalla) {
   // adivina: el alto cambia con el tamaño de letra del celular.
   document.body.style.setProperty(
     '--subnav', barra.hidden ? '0px' : barra.offsetHeight + 'px');
+
+  // Si se estaba atendiendo a un cliente y se sale de Clientes, se
+  // cierra el detalle: volver después y encontrarse el pedido de otro
+  // abierto es la forma fácil de registrar la entrega equivocada.
+  if (pantalla !== 'entregas' && pedidoAbierto && rutaHoy) cerrarPedido();
 
   window.scrollTo(0, 0);
   if (pantalla === 'dia') pintarDia();
@@ -627,6 +633,7 @@ async function pintarRuta() {
     (vieja ? ' <span class="marca-dup">no es de hoy</span>' : '');
   cabeceras.forEach(s_ => { const e = $(s_); if (e) e.innerHTML = cab; });
 
+  pedidos = await db.pedidosDe(rutaHoy.fecha);
   const marcas = await db.marcasDe(rutaHoy.fecha);
   pintarChequeoProductos(marcas.producto || {});
   pintarChequeoClientes(marcas.cliente || {});
@@ -656,20 +663,241 @@ function pintarChequeoProductos(marcas) {
 
 function pintarChequeoClientes(marcas) {
   const lista = rutaHoy.clientes || [];
-  const hechos = lista.filter(c => marcas[c.cliente_id]).length;
+
+  // Ruta sin precios (archivo viejo del PC): se queda como lista de
+  // chequeo, que es lo único que ese archivo alcanza a soportar.
+  if (!rutaHoy.detalle) {
+    $('#entregasAyuda').textContent =
+      'Marque cada cliente cuando le haya entregado su pedido.';
+    const hechos = lista.filter(c => marcas[c.cliente_id]).length;
+    $('#listaRutaClientes').innerHTML =
+      barraAvance(hechos, lista.length, 'Entregados') +
+      '<div class="chequeo">' + (lista.map(c => {
+        const ok = !!marcas[c.cliente_id];
+        const detalle = (c.items || []).map(i => `${i.cant} ${i.nombre}`).join(', ');
+        return `<label class="chq ${ok ? 'hecho' : ''}">
+          <input type="checkbox" data-tipo="cliente" data-id="${c.cliente_id}" ${ok ? 'checked' : ''}>
+          <span class="txt"><span class="t1">${c.nombre}</span>
+          <span class="t2">${[c.pueblo, c.numero_remision].filter(Boolean).join(' · ')}<br>${detalle}</span></span>
+          <span class="cant">$${pesos(c.total || 0)}</span>
+        </label>`;
+      }).join('') || '<p class="vacio">La ruta llegó sin clientes.</p>') + '</div>';
+    return;
+  }
+
+  $('#entregasAyuda').textContent =
+    'Toque un cliente para ver su pedido y registrar la entrega.';
+
+  const hechos = lista.filter(c => (pedidos[c.cliente_id] || {}).estado &&
+                                    pedidos[c.cliente_id].estado !== 'pendiente').length;
   $('#listaRutaClientes').innerHTML =
-    barraAvance(hechos, lista.length, 'Entregados') +
+    barraAvance(hechos, lista.length, 'Atendidos') +
     '<div class="chequeo">' + (lista.map(c => {
-      const ok = !!marcas[c.cliente_id];
+      const p = pedidos[c.cliente_id];
+      const estado = p ? p.estado : 'pendiente';
+      const cuentas = p ? db.cuentasPedido(p) : null;
+      const marca =
+        estado === 'entregado'   ? '<span class="ped-ok">entregado</span>'
+      : estado === 'no_entregado'? '<span class="ped-no">no entregada</span>' : '';
+      const valor = cuentas ? cuentas.neto : (c.total || 0);
+      const ajustado = cuentas && cuentas.tocado && estado === 'entregado'
+        ? '<span class="ped-ajuste">ajustado</span>' : '';
       const detalle = (c.items || []).map(i => `${i.cant} ${i.nombre}`).join(', ');
-      return `<label class="chq ${ok ? 'hecho' : ''}">
-        <input type="checkbox" data-tipo="cliente" data-id="${c.cliente_id}" ${ok ? 'checked' : ''}>
-        <span class="txt"><span class="t1">${c.nombre}</span>
+      return `<div class="chq abrible ${estado === 'entregado' ? 'hecho' : ''}"
+                   data-abrir="${c.cliente_id}">
+        <span class="txt"><span class="t1">${c.nombre} ${marca}${ajustado}</span>
         <span class="t2">${[c.pueblo, c.numero_remision].filter(Boolean).join(' · ')}<br>${detalle}</span></span>
-        <span class="cant">$${pesos(c.total || 0)}</span>
-      </label>`;
+        <span class="cant">$${pesos(valor)}</span>
+      </div>`;
     }).join('') || '<p class="vacio">La ruta llegó sin clientes.</p>') + '</div>';
 }
+
+/* ================= El pedido de un cliente ================= */
+/* El celular recoge lo que pasó; no decide cómo se registra. Manda lo
+   entregado y el PC aplica la devolución, la corrección o la no entrega
+   con las funciones que ya tiene. Una sola regla de negocio, en un solo
+   lado. */
+
+let pedidoAbierto = null;   // cliente_id
+
+const clienteDeRuta = id => (rutaHoy.clientes || []).find(c => c.cliente_id === id);
+
+function abrirPedido(cliente_id) {
+  const cliente = clienteDeRuta(cliente_id);
+  if (!cliente) return;
+  if (!pedidos[cliente_id]) {
+    pedidos[cliente_id] = db.pedidoDesdeRuta(cliente, rutaHoy.fecha);
+  }
+  pedidoAbierto = cliente_id;
+  $('#subClientes').hidden = true;
+  $('#pedidoDetalle').hidden = false;
+  window.scrollTo(0, 0);
+  pintarPedido();
+}
+
+function cerrarPedido() {
+  pedidoAbierto = null;
+  $('#pedidoDetalle').hidden = true;
+  $('#subClientes').hidden = false;
+  pintarChequeoClientes({});
+}
+
+function pintarPedido() {
+  const p = pedidos[pedidoAbierto];
+  const cliente = clienteDeRuta(pedidoAbierto);
+  if (!p || !cliente) return cerrarPedido();
+
+  $('#pedCliente').textContent = cliente.nombre;
+  $('#pedSub').textContent =
+    [cliente.pueblo, p.numero_remision].filter(Boolean).join(' · ');
+
+  const noEnt = p.estado === 'no_entregado';
+  $('#pedNoEntregado').hidden = !noEnt;
+  $('#pedLineas').hidden = noEnt;
+
+  const cuentas = db.cuentasPedido(p);
+
+  if (!noEnt) {
+    $('#pedLineas').innerHTML = p.lineas.map((l, i) => {
+      const val = db.valorLinea(l);
+      const falta = Math.max(0, (Number(l.pedido) || 0) - (Number(l.entregado) || 0));
+      const deMas = Math.max(0, (Number(l.entregado) || 0) - (Number(l.pedido) || 0));
+      const porPesar = db.pendientePorPesar(l);
+      const aviso = porPesar ? '<span class="ped-pesar">falta pesar</span>'
+                  : falta ? `<span class="ped-menos">${falta} menos</span>`
+                  : deMas ? `<span class="ped-mas">${deMas} de más</span>` : '';
+      // Los de peso se cobran por kilo: lo que se captura es el peso
+      // real, no cuántos bloques. Por eso el campo es distinto.
+      const campo = l.por_peso
+        ? `<label class="ped-campo"><span>Kilos</span>
+             <input class="ped-peso" type="number" inputmode="decimal" min="0" step="0.01"
+                    data-i="${i}" value="${l.peso_kg ?? ''}" placeholder="kg"></label>`
+        : `<label class="ped-campo"><span>Entregado</span>
+             <input class="ped-cant" type="number" inputmode="numeric" min="0"
+                    data-i="${i}" value="${l.entregado}"></label>`;
+      return `<div class="ped-linea ${(falta || deMas) ? 'tocada' : ''} ${porPesar ? 'pesar' : ''}">
+        <div class="ped-nombre">${l.nombre} ${aviso}</div>
+        <div class="ped-datos">
+          <span class="ped-dato"><em>Pedido</em>${l.pedido}${l.cambios ? ` (+${l.cambios})` : ''}</span>
+          ${campo}
+          <span class="ped-dato"><em>Valor</em>$${pesos(val)}</span>
+        </div>
+      </div>`;
+    }).join('') || '<p class="vacio">Este pedido llegó sin productos.</p>';
+  }
+
+  $('#pedCuentas').innerHTML =
+    (cuentas.devueltos.length ? `<div><span>Se quedaron en el carro</span><strong>${cuentas.devueltos.map(d => d.cantidad + ' ' + d.nombre).join(', ')}</strong></div>` : '') +
+    (cuentas.extras.length ? `<div><span>Salieron del disponible</span><strong>${cuentas.extras.map(x => x.cantidad + ' ' + x.nombre).join(', ')}</strong></div>` : '') +
+    (cuentas.pendientes ? `<div class="chico"><span>Falta pesar</span><span>${cuentas.pendientes} producto(s)</span></div>` : '') +
+    `<div class="neto"><span>A cobrar</span><strong>$${pesos(cuentas.neto)}</strong></div>` +
+    (cuentas.bruto !== cuentas.neto ? `<div class="chico"><span>Decía el pedido</span><span>$${pesos(cuentas.bruto)}</span></div>` : '');
+
+  $('#pedPago').value = p.pago || 'pendiente';
+  $('#pedNota').value = p.nota || '';
+  const mixto = p.pago === 'mixto';
+  $('#pedMixtoCaja').hidden = !mixto;
+  if (mixto) {
+    $('#pedEfectivo').value = p.monto_efectivo || '';
+    const resto = Math.max(0, cuentas.neto - (Number(p.monto_efectivo) || 0));
+    $('#pedMixtoResto').textContent = `Por consignación quedarían $${pesos(resto)}.`;
+  }
+  $('#btnNoEntregada').textContent = noEnt
+    ? 'Deshacer: sí se entregó' : 'No se entregó nada';
+}
+
+$('#listaRutaClientes').addEventListener('click', e => {
+  const fila = e.target.closest('[data-abrir]');
+  if (fila) abrirPedido(fila.dataset.abrir);
+});
+
+$('#btnVolverLista').addEventListener('click', cerrarPedido);
+
+$('#pedLineas').addEventListener('input', e => {
+  const p = pedidos[pedidoAbierto];
+  if (!p) return;
+  const i = Number(e.target.dataset.i);
+  if (Number.isNaN(i) || !p.lineas[i]) return;
+  const v = e.target.value.trim();
+  if (e.target.classList.contains('ped-cant')) {
+    p.lineas[i].entregado = v === '' ? 0 : Number(v);
+  } else if (e.target.classList.contains('ped-peso')) {
+    p.lineas[i].peso_kg = v === '' ? null : Number(v);
+  } else return;
+  pintarPedido();
+  // El foco se pierde al repintar; se devuelve al mismo campo.
+  // Los input type=number no admiten setSelectionRange; basta el foco.
+  $(`#pedLineas [data-i="${i}"]`)?.focus();
+});
+
+$('#pedPago').addEventListener('change', e => {
+  const p = pedidos[pedidoAbierto];
+  if (!p) return;
+  p.pago = e.target.value;
+  if (p.pago !== 'mixto') p.monto_efectivo = 0;
+  pintarPedido();
+});
+
+$('#pedEfectivo').addEventListener('input', e => {
+  const p = pedidos[pedidoAbierto];
+  if (!p) return;
+  p.monto_efectivo = Number(e.target.value) || 0;
+  const cuentas = db.cuentasPedido(p);
+  const resto = Math.max(0, cuentas.neto - p.monto_efectivo);
+  $('#pedMixtoResto').textContent = `Por consignación quedarían $${pesos(resto)}.`;
+});
+
+$('#pedNota').addEventListener('input', e => {
+  const p = pedidos[pedidoAbierto];
+  if (p) p.nota = e.target.value;
+});
+
+$('#btnNoEntregada').addEventListener('click', async () => {
+  const p = pedidos[pedidoAbierto];
+  if (!p) return;
+  if (p.estado === 'no_entregado') {
+    p.estado = 'pendiente';
+  } else {
+    if (!confirm('¿Marcar que este cliente no recibió nada? El pedido completo vuelve al carro.')) return;
+    p.estado = 'no_entregado';
+    p.pago = 'pendiente';
+    p.monto_efectivo = 0;
+  }
+  await db.guardarPedido(p);
+  pedidos = await db.pedidosDe(rutaHoy.fecha);
+  pedidoAbierto && (pedidos[pedidoAbierto] = pedidos[pedidoAbierto] || p);
+  pintarPedido();
+  prepararCierre();
+});
+
+$('#btnGuardarPedido').addEventListener('click', async () => {
+  const p = pedidos[pedidoAbierto];
+  if (!p) return;
+  if (p.estado !== 'no_entregado') p.estado = 'entregado';
+  const c = db.cuentasPedido(p);
+  if (p.pago === 'mixto' && (Number(p.monto_efectivo) || 0) > c.neto) {
+    return aviso('El efectivo no puede ser mayor que lo que hay que cobrar.', 'mal');
+  }
+  await db.guardarPedido(p);
+  pedidos = await db.pedidosDe(rutaHoy.fecha);
+  aviso('Entrega guardada.');
+  cerrarPedido();
+  prepararCierre();
+});
+
+$('#btnImprimirPedido').addEventListener('click', async () => {
+  const p = pedidos[pedidoAbierto];
+  const cliente = clienteDeRuta(pedidoAbierto);
+  if (!p || !cliente) return;
+  try {
+    await impresora.imprimir(ticket.remisionRuta(
+      p, db.cuentasPedido(p),
+      { ...cliente, dia_ruta: cliente.dia_ruta || rutaHoy.dia_ruta }, cfg));
+    aviso('Remisión impresa.');
+  } catch (e) {
+    aviso('No se pudo imprimir: ' + e.message, 'mal');
+  }
+});
 
 async function alMarcar(e) {
   const inp = e.target;
@@ -1129,6 +1357,7 @@ async function armarCierre() {
   const filas = await db.cuadre(fecha);
   const ruta = await db.rutaDe(fecha);
   const marcas = await db.marcasDe(fecha);
+  const pedidosDia = await db.pedidosDe(fecha);
 
   const total = vivas.reduce((s, v) => s + v.total, 0);
   const efectivo = vivas.filter(v => v.pago === 'efectivo').reduce((s, v) => s + v.total, 0);
@@ -1150,10 +1379,37 @@ async function armarCierre() {
       productos_cargados: Object.keys(marcas.producto || {}),
       clientes_entregados: Object.keys(marcas.cliente || {}),
       clientes_sin_entregar: (ruta.clientes || [])
-        .filter(c => !(marcas.cliente || {})[c.cliente_id])
+        .filter(c => !(marcas.cliente || {})[c.cliente_id] && !pedidosDia[c.cliente_id])
         .map(c => ({ cliente_id: c.cliente_id, nombre: c.nombre,
                      numero_remision: c.numero_remision, total: c.total }))
     } : null,
+    // El detalle de cada entrega: qué se entregó de verdad, qué se
+    // quedó en el carro y cómo pagó. El PC lo aplica con las funciones
+    // que ya tiene — devolución, corrección o no entregada — así que
+    // acá solo van los hechos, no la decisión de cómo registrarlos.
+    entregas_detalle: Object.values(pedidosDia)
+      .filter(p => p.estado && p.estado !== 'pendiente')
+      .map(p => {
+        const c = db.cuentasPedido(p);
+        return {
+          cliente_id: p.cliente_id,
+          remision_id: p.remision_id,
+          numero_remision: p.numero_remision,
+          estado: p.estado,
+          pago: p.pago,
+          monto_efectivo: p.monto_efectivo || 0,
+          nota: p.nota || '',
+          bruto: c.bruto, devolucion: c.devolucion, extra: c.extra, neto: c.neto,
+          devueltos: c.devueltos,
+          extras: c.extras,
+          lineas: p.lineas.map(l => ({
+            item_id: l.item_id, codigo: l.codigo, nombre: l.nombre,
+            pedido: l.pedido, entregado: l.entregado,
+            por_peso: l.por_peso, peso_kg: l.peso_kg,
+            valor: db.valorLinea(l),
+          })),
+        };
+      }),
     resumen: {
       fecha,
       num_ventas: vivas.length,

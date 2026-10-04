@@ -6,8 +6,12 @@
    está comprando, y el papel de 58 mm no sobra. */
 import { Ticket, COLUMNAS } from './escpos.js';
 import { alinear, envolver, pesos, fechaCorta } from './util.js';
+import { valorLinea } from './db.js';
 
-const PAGOS = { efectivo: 'EFECTIVO', pendiente: 'PENDIENTE DE PAGO', consignacion: 'CONSIGNACION' };
+const PAGOS = {
+  efectivo: 'EFECTIVO', pendiente: 'PENDIENTE DE PAGO',
+  consignacion: 'CONSIGNACION', mixto: 'MIXTO',
+};
 
 /* Cantidades sin decimales de sobra: 3 en vez de 3.0, pero 2.5 se respeta */
 const num = v => {
@@ -102,6 +106,127 @@ export function cierre(resumen, cfg) {
   }
   t.separador('=');
   t.linea('Firma: ______________________');
+  t.avanzar(4);
+  return t.bytes();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   REMISIÓN DE LA RUTA
+   ══════════════════════════════════════════════════════════════════
+   El pedido que viene del PC, impreso con la misma estructura que
+   ticket_print.py: REMISION + número arriba, cliente en negrita,
+   pueblo, celular, dirección, día y fecha, los ítems con su precio y
+   el TOTAL destacado.
+
+   No sale idéntico carácter por carácter, y no puede: el PC imprime a
+   42 columnas en papel de 80 mm y esta es de 58 mm, que son 32. Lo que
+   se conserva es el orden y la jerarquía, para que se reconozca como la
+   misma remisión.
+
+   La diferencia de fondo con remision(): acá se imprime lo que DE
+   VERDAD se entregó. Si el cliente recibió menos, las líneas devueltas
+   salen listadas y el TOTAL es el neto a cobrar — que es el mismo que
+   va a quedar en cartera. El papel que firma el cliente y la cuenta que
+   se le cobra tienen que decir lo mismo.                              */
+
+export function remisionRuta(pedido, cuentas, cliente, cfg) {
+  const t = new Ticket(cfg.codepage);
+  t.izquierda();
+
+  t.linea(centrar('REMISION ' + (pedido.numero_remision || '')));
+  t.separador('=');
+
+  t.negrita(true);
+  for (const l of envolver('Cliente: ' + (cliente.nombre || ''), COLUMNAS)) t.linea(l);
+  t.negrita(false);
+
+  if (cliente.pueblo) t.linea('Pueblo: ' + cliente.pueblo);
+  const cel = [cliente.telefono, cliente.telefono2].filter(Boolean).join(' / ');
+  if (cel) t.linea('Cel: ' + cel);
+  if (cliente.direccion) {
+    for (const l of envolver('Dir: ' + cliente.direccion, COLUMNAS)) t.linea(l);
+  }
+  t.linea([cliente.dia_ruta, fechaCorta(pedido.fecha)].filter(Boolean).join(' - '));
+  t.separador('-');
+
+  if (pedido.estado === 'no_entregado') {
+    t.linea('');
+    t.negrita(true);
+    t.linea(centrar('NO ENTREGADA'));
+    t.negrita(false);
+    if (pedido.nota) for (const l of envolver(pedido.nota, COLUMNAS)) t.linea(l);
+    t.linea('');
+    t.separador('=');
+    t.avanzar(4);
+    return t.bytes();
+  }
+
+  // --- Lo entregado ---
+  for (const l of pedido.lineas) {
+    const cant = Number(l.entregado) || 0;
+    if (cant <= 0 && !l.cambios) continue;
+    for (const x of envolver(l.nombre, COLUMNAS)) t.linea(x);
+
+    let detalle = '  ' + num(cant);
+    if (l.cambios) detalle += ` (+${num(l.cambios)} cambio)`;
+
+    if (l.obsequio) {
+      t.linea(detalle + '  OBSEQUIO');
+    } else if (l.por_peso && !l.peso_kg) {
+      t.linea(detalle + '  ** PENDIENTE POR PESAR **');
+    } else if (l.por_peso) {
+      t.linea(`  ${num(l.peso_kg)} kg x ${pesos(l.precio)}/kg`);
+      t.linea(alinear(detalle, pesos(valorLinea(l)), COLUMNAS));
+    } else {
+      t.linea(alinear(`${detalle} x ${pesos(l.precio)}`,
+                      pesos(valorLinea(l)), COLUMNAS));
+    }
+  }
+
+  // --- Lo que no se entregó, si lo hubo ---
+  if (cuentas.devueltos.length) {
+    t.separador('-');
+    t.linea('NO ENTREGADO');
+    for (const d of cuentas.devueltos) {
+      for (const x of envolver(d.nombre, COLUMNAS)) t.linea(x);
+      t.linea(alinear('  ' + num(d.cantidad), '-' + pesos(d.monto), COLUMNAS));
+    }
+  }
+
+  t.separador('-');
+  t.linea('');
+  t.negrita(true).grande(true);
+  t.linea(('TOTAL: $' + pesos(cuentas.neto)).padStart(COLUMNAS / 2));
+  t.grande(false).negrita(false);
+  t.linea('');
+
+  // El mismo aviso que pone el PC. Sin él, alguien puede cobrar este
+  // total creyendo que está completo cuando falta pesar un bloque.
+  if (cuentas.pendientes) {
+    for (const l of envolver(
+      '** OJO: este total NO incluye los productos pendientes por pesar. '
+      + 'No cobrar aun, falta el peso real. **', COLUMNAS)) t.linea(l);
+  }
+
+  if (cuentas.bruto !== cuentas.neto) {
+    t.linea(alinear('Decia el pedido', '$' + pesos(cuentas.bruto), COLUMNAS));
+  }
+
+  t.linea('Pago: ' + (PAGOS[pedido.pago] || pedido.pago));
+  if (pedido.pago === 'mixto') {
+    t.linea(alinear('  Efectivo', '$' + pesos(pedido.monto_efectivo), COLUMNAS));
+    t.linea(alinear('  Consignacion',
+                    '$' + pesos(Math.max(0, cuentas.neto - pedido.monto_efectivo)), COLUMNAS));
+  }
+  // Dos notas distintas: la del pedido viene del PC (una instrucción
+  // para la entrega) y la del vendedor es lo que pasó en la calle.
+  if (cliente.observaciones) {
+    for (const l of envolver('Obs: ' + cliente.observaciones, COLUMNAS)) t.linea(l);
+  }
+  if (pedido.nota) for (const l of envolver('Nota: ' + pedido.nota, COLUMNAS)) t.linea(l);
+
+  t.separador('=');
+  t.linea(centrar('Gracias por su compra'));
   t.avanzar(4);
   return t.bytes();
 }
