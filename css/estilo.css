@@ -423,3 +423,14 @@ button.volver{
 .ped-pesar{background:var(--ambar-claro);color:var(--amber);font-size:10px;
   padding:1px 5px;border-radius:2px;margin-left:4px}
 .ped-linea.pesar{border-left:3px solid var(--amber)}
+
+/* --- Disponible en el carro --- */
+.disp-fila{
+  display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  padding:7px 0;border-bottom:1px solid var(--linea);
+}
+.disp-fila:last-of-type{border-bottom:none}
+.disp-nombre{font-size:13px;min-width:0}
+.disp-cant{font-weight:700;font-size:16px;flex:none}
+.disp-fila.alerta .disp-cant{color:var(--mal)}
+#dispLista{margin-top:4px}
