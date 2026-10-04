@@ -181,6 +181,11 @@
 
     <div id="pedLineas"></div>
 
+    <div id="pedAgregar">
+      <label for="pedProducto">¿Se fue un producto que no estaba en el pedido?</label>
+      <select id="pedProducto"></select>
+    </div>
+
     <div class="ped-cuentas" id="pedCuentas"></div>
 
     <fieldset>
@@ -189,11 +194,19 @@
         <option value="pendiente">Queda pendiente</option>
         <option value="efectivo">Efectivo</option>
         <option value="consignacion">Consignación</option>
-        <option value="mixto">Mixto (parte y parte)</option>
+        <option value="mixto">Pagó una parte (efectivo y/o consignación)</option>
       </select>
       <div id="pedMixtoCaja" hidden>
-        <label for="pedEfectivo">¿Cuánto en efectivo?</label>
-        <input id="pedEfectivo" type="number" inputmode="numeric" min="0" step="1000">
+        <div class="dos">
+          <div>
+            <label for="pedEfectivo">Efectivo</label>
+            <input id="pedEfectivo" type="number" inputmode="numeric" min="0" step="1000">
+          </div>
+          <div>
+            <label for="pedConsignado">Consignación</label>
+            <input id="pedConsignado" type="number" inputmode="numeric" min="0" step="1000">
+          </div>
+        </div>
         <p class="nota" id="pedMixtoResto"></p>
       </div>
       <label for="pedNota">Nota (opcional)</label>
