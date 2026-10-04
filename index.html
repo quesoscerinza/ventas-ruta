@@ -161,8 +161,48 @@
   <h2>Entregas del día</h2>
   <p id="entregasCabecera" class="explica"></p>
   <div id="subClientes">
-    <p class="explica">Marque cada cliente cuando le haya entregado su pedido.</p>
+    <p class="explica" id="entregasAyuda">Toque un cliente para ver su pedido y registrar la entrega.</p>
     <div id="listaRutaClientes" class="chequeo"></div>
+  </div>
+
+  <!-- El pedido de un cliente. Reemplaza la lista mientras está abierto:
+       en la calle se atiende a uno a la vez y la lista solo estorbaría. -->
+  <div id="pedidoDetalle" hidden>
+    <button id="btnVolverLista" class="volver">‹ Volver a la lista</button>
+
+    <div class="ped-cabecera">
+      <strong id="pedCliente">—</strong>
+      <span id="pedSub" class="menu-sub">—</span>
+    </div>
+
+    <div id="pedNoEntregado" class="aviso mal" hidden>
+      Marcada como NO ENTREGADA. No se cobra nada y todo el pedido vuelve al carro.
+    </div>
+
+    <div id="pedLineas"></div>
+
+    <div class="ped-cuentas" id="pedCuentas"></div>
+
+    <fieldset>
+      <legend>Cómo pagó</legend>
+      <select id="pedPago">
+        <option value="pendiente">Queda pendiente</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="consignacion">Consignación</option>
+        <option value="mixto">Mixto (parte y parte)</option>
+      </select>
+      <div id="pedMixtoCaja" hidden>
+        <label for="pedEfectivo">¿Cuánto en efectivo?</label>
+        <input id="pedEfectivo" type="number" inputmode="numeric" min="0" step="1000">
+        <p class="nota" id="pedMixtoResto"></p>
+      </div>
+      <label for="pedNota">Nota (opcional)</label>
+      <input id="pedNota" type="text" placeholder="Ej. no había quien recibiera">
+    </fieldset>
+
+    <button id="btnGuardarPedido" class="primario grande">Guardar la entrega</button>
+    <button id="btnImprimirPedido">Imprimir la remisión</button>
+    <button id="btnNoEntregada" class="peligro">No se entregó nada</button>
   </div>
 </section>
 
