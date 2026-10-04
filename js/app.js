@@ -1381,8 +1381,12 @@ async function armarCierre() {
   const carga = await db.cargaDe(fecha);
   const filas = await db.cuadre(fecha);
   const ruta = await db.rutaDe(fecha);
-  const marcas = await db.marcasDe(fecha);
-  const pedidosDia = await db.pedidosDe(fecha);
+  // La ruta puede no ser de hoy (el PC la genera con la fecha de entrega,
+  // y si no hay de hoy se usa la más reciente). Las marcas y los pedidos
+  // se guardaron con la fecha de ESA ruta, así que con esa se buscan.
+  const fechaRuta = ruta ? ruta.fecha : fecha;
+  const marcas = await db.marcasDe(fechaRuta);
+  const pedidosDia = await db.pedidosDe(fechaRuta);
 
   const total = vivas.reduce((s, v) => s + v.total, 0);
   const efectivo = vivas.filter(v => v.pago === 'efectivo').reduce((s, v) => s + v.total, 0);
@@ -1399,8 +1403,9 @@ async function armarCierre() {
     ventas,                    // incluye las anuladas, con su motivo
     clientes_nuevos: nuevos,
     cuadre: filas,
-    entregas: ruta && ruta.fecha === fecha ? {
+    entregas: ruta ? {
       dia_ruta: ruta.dia_ruta,
+      fecha_ruta: ruta.fecha,
       productos_cargados: Object.keys(marcas.producto || {}),
       clientes_entregados: Object.keys(marcas.cliente || {}),
       clientes_sin_entregar: (ruta.clientes || [])

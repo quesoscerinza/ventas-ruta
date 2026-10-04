@@ -135,6 +135,20 @@ export async function cargarRuta(datos) {
   };
 }
 
+/** La fecha con la que se guardan los pedidos: la de la RUTA que se está
+    trabajando, no la de hoy.
+
+    No son lo mismo y confundirlas cuesta caro. El consolidado lo genera
+    el PC con la fecha de ENTREGA, que puede no ser el día en que el
+    vendedor lo carga; y rutaDe() además acepta la ruta más reciente
+    cuando no hay una de hoy. Si los pedidos se guardan con la fecha de
+    la ruta y después se buscan con la de hoy, no aparece ninguno: el
+    cierre sale sin las entregas y nadie se entera. */
+export async function fechaPedidos(fecha) {
+  const r = await rutaDe(fecha);
+  return r ? r.fecha : fecha;
+}
+
 /** La ruta de una fecha, o la más reciente que haya si no hay de esa fecha. */
 export async function rutaDe(fecha) {
   const exacta = await obtener('ruta', fecha);
@@ -295,7 +309,9 @@ export async function cargaDe(fecha) {
 export async function cuadre(fecha) {
   const carga = await cargaDe(fecha);
   const ventas = (await ventasDe(fecha)).filter(v => !v.anulada);
-  const pedidos = await pedidosDe(fecha);
+  // Los pedidos van por la fecha de la ruta; la carga y las ventas por
+  // la de hoy. Ver fechaPedidos().
+  const pedidos = await pedidosDe(await fechaPedidos(fecha));
 
   const filas = new Map();
   const fila = (id, codigo, nombre) => {
