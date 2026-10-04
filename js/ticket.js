@@ -212,11 +212,20 @@ export function remisionRuta(pedido, cuentas, cliente, cfg) {
     t.linea(alinear('Decia el pedido', '$' + pesos(cuentas.bruto), COLUMNAS));
   }
 
-  t.linea('Pago: ' + (PAGOS[pedido.pago] || pedido.pago));
   if (pedido.pago === 'mixto') {
-    t.linea(alinear('  Efectivo', '$' + pesos(pedido.monto_efectivo), COLUMNAS));
-    t.linea(alinear('  Consignacion',
-                    '$' + pesos(Math.max(0, cuentas.neto - pedido.monto_efectivo)), COLUMNAS));
+    const efe = Number(pedido.monto_efectivo) || 0;
+    const con = Number(pedido.monto_consignado) || 0;
+    const falta = Math.max(0, cuentas.neto - efe - con);
+    t.linea('Pago:');
+    if (efe) t.linea(alinear('  Efectivo', '$' + pesos(efe), COLUMNAS));
+    if (con) t.linea(alinear('  Consignacion', '$' + pesos(con), COLUMNAS));
+    if (falta) {
+      t.negrita(true);
+      t.linea(alinear('  QUEDA DEBIENDO', '$' + pesos(falta), COLUMNAS));
+      t.negrita(false);
+    }
+  } else {
+    t.linea('Pago: ' + (PAGOS[pedido.pago] || pedido.pago));
   }
   // Dos notas distintas: la del pedido viene del PC (una instrucción
   // para la entrega) y la del vendedor es lo que pasó en la calle.

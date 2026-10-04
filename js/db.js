@@ -381,6 +381,28 @@ export async function disponible(fecha) {
 export const clavePedido = (fecha, cliente_id) => `${fecha}|${cliente_id}`;
 
 /** Arma el pedido tal como vino del PC, sin tocar nada todavía. */
+/** Una línea nueva, de un producto que no iba en el pedido. Nace con
+    `producto_id` en null: el PC lo resuelve por código + nombre contra su
+    catálogo, igual que hace con las ventas de la calle. */
+export function lineaNueva(prod) {
+  return {
+    producto_id: null,
+    item_id: null,
+    codigo: prod.codigo || '',
+    nombre: prod.nombre || '',
+    pedido: 0,                 // no iba en el pedido original
+    cambios: 0,
+    entregado: 1,
+    precio: Number(prod.precio) || 0,
+    precio_original: Number(prod.precio) || 0,
+    subtotal: 0,               // el pedido no lo traía, así que valía 0
+    obsequio: false,
+    por_peso: !!prod.por_peso,
+    peso_kg: null,
+    agregada: true,
+  };
+}
+
 export function pedidoDesdeRuta(cliente, fecha) {
   return {
     clave: clavePedido(fecha, cliente.cliente_id),
@@ -391,6 +413,7 @@ export function pedidoDesdeRuta(cliente, fecha) {
     estado: 'pendiente',              // pendiente | entregado | no_entregado
     pago: cliente.pago || 'pendiente',
     monto_efectivo: 0,
+    monto_consignado: 0,
     nota: '',
     lineas: (cliente.items || []).map(it => ({
       // producto_id es la llave con la que el PC reencuentra el renglón.
@@ -406,6 +429,9 @@ export function pedidoDesdeRuta(cliente, fecha) {
       cambios: Number(it.cambios || 0),
       entregado: Number(it.cantidad ?? it.cant ?? 0),
       precio: Number(it.precio || 0),
+      // Se guarda el precio con el que salió del PC para poder mostrar
+      // —y avisar— cuando alguien lo cambia en la calle.
+      precio_original: Number(it.precio || 0),
       subtotal: Number(it.subtotal || 0),
       obsequio: !!it.obsequio,
       por_peso: !!it.por_peso,
@@ -428,7 +454,7 @@ export function pedidoDesdeRuta(cliente, fecha) {
  */
 export function valorLinea(l) {
   if (l.obsequio) return 0;
-  const precio = Number(l.precio) || 0;
+  const precio = Number(l.precio) || 0;   // ya es el corregido si lo tocaron
   if (l.por_peso) return Math.round(precio * (Number(l.peso_kg) || 0));
   return Math.round(precio * (Number(l.entregado) || 0));
 }
@@ -470,6 +496,9 @@ export function cuentasPedido(pedido) {
     const pedida = Number(l.pedido) || 0;
     const entregada = Number(l.entregado) || 0;
 
+    // Un cambio de PRECIO no mueve producto: no es devolución ni salida
+    // del disponible. Solo cambia lo que se cobra, y eso ya está en el
+    // neto. Las dos listas de abajo son de CANTIDADES.
     const falta = Math.max(0, pedida - entregada);
     if (falta > 0) {
       // El monto se estima proporcional al pedido, igual que lo calcula

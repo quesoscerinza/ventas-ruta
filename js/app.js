@@ -746,6 +746,17 @@ let pedidoAbierto = null;   // cliente_id
 
 const clienteDeRuta = id => (rutaHoy.clientes || []).find(c => c.cliente_id === id);
 
+/* Cómo queda repartido lo que pagó. Lo que no cubran el efectivo y la
+   consignación queda debiendo: ese es el caso que no existía antes. */
+function textoReparto(p, cuentas) {
+  const pagado = (Number(p.monto_efectivo) || 0) + (Number(p.monto_consignado) || 0);
+  const falta = Math.round(cuentas.neto - pagado);
+  if (pagado <= 0) return 'Todavía no ha puesto nada: queda pendiente completo.';
+  if (falta > 0) return `Quedaría debiendo $${pesos(falta)}.`;
+  if (falta < 0) return `Está poniendo $${pesos(-falta)} de más. Revise las cifras.`;
+  return 'Queda pagada completa.';
+}
+
 function abrirPedido(cliente_id) {
   const cliente = clienteDeRuta(cliente_id);
   if (!cliente) return;
@@ -799,13 +810,24 @@ function pintarPedido() {
         : `<label class="ped-campo"><span>Entregado</span>
              <input class="ped-cant" type="number" inputmode="numeric" min="0"
                     data-i="${i}" value="${l.entregado}"></label>`;
+      // El precio cambiado se le queda fijo a este cliente, así que se
+      // marca en pantalla: no es lo mismo corregir una cantidad que
+      // cambiarle la lista de precios a alguien.
+      const precioCambio = Number(l.precio) !== Number(l.precio_original ?? l.precio);
+      const marcaPrecio = precioCambio
+        ? `<span class="ped-precio-cambio">antes $${pesos(l.precio_original)}</span>` : '';
       return `<div class="ped-linea ${(falta || deMas) ? 'tocada' : ''} ${porPesar ? 'pesar' : ''}">
-        <div class="ped-nombre">${l.nombre} ${aviso}</div>
+        <div class="ped-nombre">${l.nombre} ${aviso}
+          ${l.agregada ? '<span class="ped-nueva">agregado</span>' : ''}</div>
         <div class="ped-datos">
           <span class="ped-dato"><em>Pedido</em>${l.pedido}${l.cambios ? ` (+${l.cambios})` : ''}</span>
           ${campo}
+          <label class="ped-campo"><span>Precio${l.por_peso ? '/kg' : ''}</span>
+            <input class="ped-precio" type="number" inputmode="numeric" min="0" step="100"
+                   data-i="${i}" value="${l.precio}"></label>
           <span class="ped-dato"><em>Valor</em>$${pesos(val)}</span>
         </div>
+        ${marcaPrecio ? `<div class="ped-aviso-precio">${marcaPrecio} · el precio nuevo le queda fijo a este cliente</div>` : ''}
       </div>`;
     }).join('') || '<p class="vacio">Este pedido llegó sin productos.</p>';
   }
@@ -817,14 +839,23 @@ function pintarPedido() {
     `<div class="neto"><span>A cobrar</span><strong>$${pesos(cuentas.neto)}</strong></div>` +
     (cuentas.bruto !== cuentas.neto ? `<div class="chico"><span>Decía el pedido</span><span>$${pesos(cuentas.bruto)}</span></div>` : '');
 
+  // Catálogo para agregar un producto que no iba en el pedido. Solo los
+  // que no están ya en la lista: repetir un producto en dos renglones
+  // confunde al PC, que cruza por producto.
+  const yaEstan = new Set(p.lineas.map(l => `${l.codigo}|${l.nombre}`));
+  $('#pedAgregar').hidden = noEnt;
+  $('#pedProducto').innerHTML = '<option value="">Agregar un producto…</option>' +
+    productos.filter(x => !yaEstan.has(x.id))
+      .map(x => `<option value="${x.id}">${x.nombre} · $${pesos(x.precio)}</option>`).join('');
+
   $('#pedPago').value = p.pago || 'pendiente';
   $('#pedNota').value = p.nota || '';
   const mixto = p.pago === 'mixto';
   $('#pedMixtoCaja').hidden = !mixto;
   if (mixto) {
     $('#pedEfectivo').value = p.monto_efectivo || '';
-    const resto = Math.max(0, cuentas.neto - (Number(p.monto_efectivo) || 0));
-    $('#pedMixtoResto').textContent = `Por consignación quedarían $${pesos(resto)}.`;
+    $('#pedConsignado').value = p.monto_consignado || '';
+    $('#pedMixtoResto').textContent = textoReparto(p, cuentas);
   }
   $('#btnNoEntregada').textContent = noEnt
     ? 'Deshacer: sí se entregó' : 'No se entregó nada';
@@ -847,6 +878,8 @@ $('#pedLineas').addEventListener('input', e => {
     p.lineas[i].entregado = v === '' ? 0 : Number(v);
   } else if (e.target.classList.contains('ped-peso')) {
     p.lineas[i].peso_kg = v === '' ? null : Number(v);
+  } else if (e.target.classList.contains('ped-precio')) {
+    p.lineas[i].precio = v === '' ? 0 : Number(v);
   } else return;
   pintarPedido();
   // El foco se pierde al repintar; se devuelve al mismo campo.
@@ -862,13 +895,23 @@ $('#pedPago').addEventListener('change', e => {
   pintarPedido();
 });
 
-$('#pedEfectivo').addEventListener('input', e => {
+function alCambiarMonto() {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
-  p.monto_efectivo = Number(e.target.value) || 0;
-  const cuentas = db.cuentasPedido(p);
-  const resto = Math.max(0, cuentas.neto - p.monto_efectivo);
-  $('#pedMixtoResto').textContent = `Por consignación quedarían $${pesos(resto)}.`;
+  p.monto_efectivo = Number($('#pedEfectivo').value) || 0;
+  p.monto_consignado = Number($('#pedConsignado').value) || 0;
+  $('#pedMixtoResto').textContent = textoReparto(p, db.cuentasPedido(p));
+}
+$('#pedEfectivo').addEventListener('input', alCambiarMonto);
+$('#pedConsignado').addEventListener('input', alCambiarMonto);
+
+$('#pedProducto').addEventListener('change', e => {
+  const p = pedidos[pedidoAbierto];
+  const prod = productos.find(x => x.id === e.target.value);
+  if (!p || !prod) return;
+  p.lineas.push(db.lineaNueva(prod));
+  pintarPedido();
+  aviso(`${prod.nombre} agregado al pedido.`);
 });
 
 $('#pedNota').addEventListener('input', e => {
@@ -886,6 +929,7 @@ $('#btnNoEntregada').addEventListener('click', async () => {
     p.estado = 'no_entregado';
     p.pago = 'pendiente';
     p.monto_efectivo = 0;
+    p.monto_consignado = 0;
   }
   await db.guardarPedido(p);
   pedidos = await db.pedidosDe(rutaHoy.fecha);
@@ -899,8 +943,14 @@ $('#btnGuardarPedido').addEventListener('click', async () => {
   if (!p) return;
   if (p.estado !== 'no_entregado') p.estado = 'entregado';
   const c = db.cuentasPedido(p);
-  if (p.pago === 'mixto' && (Number(p.monto_efectivo) || 0) > c.neto) {
-    return aviso('El efectivo no puede ser mayor que lo que hay que cobrar.', 'mal');
+  if (p.pago === 'mixto') {
+    const pagado = (Number(p.monto_efectivo) || 0) + (Number(p.monto_consignado) || 0);
+    if (pagado > c.neto) {
+      return aviso('Está poniendo más plata de la que hay que cobrar. Revise.', 'mal');
+    }
+    if (pagado <= 0) {
+      return aviso('Si no puso nada, déjelo en «Queda pendiente».', 'mal');
+    }
   }
   await db.guardarPedido(p);
   pedidos = await db.pedidosDe(rutaHoy.fecha);
@@ -1428,6 +1478,7 @@ async function armarCierre() {
           estado: p.estado,
           pago: p.pago,
           monto_efectivo: p.monto_efectivo || 0,
+          monto_consignado: p.monto_consignado || 0,
           nota: p.nota || '',
           bruto: c.bruto, devolucion: c.devolucion, extra: c.extra, neto: c.neto,
           devueltos: c.devueltos,
@@ -1435,8 +1486,11 @@ async function armarCierre() {
           lineas: p.lineas.map(l => ({
             producto_id: l.producto_id, item_id: l.item_id,
             codigo: l.codigo, nombre: l.nombre,
-            pedido: l.pedido, entregado: l.entregado,
+            pedido: l.pedido, cambios: l.cambios || 0, entregado: l.entregado,
             por_peso: l.por_peso, peso_kg: l.peso_kg,
+            precio: l.precio, precio_original: l.precio_original ?? l.precio,
+            obsequio: !!l.obsequio,
+            agregada: !!l.agregada,
             valor: db.valorLinea(l),
           })),
         };
