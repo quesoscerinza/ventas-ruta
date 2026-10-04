@@ -434,3 +434,13 @@ button.volver{
 .disp-cant{font-weight:700;font-size:16px;flex:none}
 .disp-fila.alerta .disp-cant{color:var(--mal)}
 #dispLista{margin-top:4px}
+.ped-datos{grid-template-columns:.8fr 1fr 1fr .9fr}
+.ped-nueva{background:var(--verde-claro);color:var(--verde);font-size:10px;
+  padding:1px 5px;border-radius:2px;margin-left:4px}
+.ped-precio-cambio{color:var(--amber)}
+.ped-aviso-precio{
+  margin-top:7px;font-size:11px;color:var(--amber);
+  background:var(--ambar-claro);padding:4px 7px;border-radius:3px;
+}
+#pedAgregar{margin:12px 0}
+#pedAgregar select{margin:0}
