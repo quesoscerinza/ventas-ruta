@@ -1403,7 +1403,8 @@ async function armarCierre() {
           devueltos: c.devueltos,
           extras: c.extras,
           lineas: p.lineas.map(l => ({
-            item_id: l.item_id, codigo: l.codigo, nombre: l.nombre,
+            producto_id: l.producto_id, item_id: l.item_id,
+            codigo: l.codigo, nombre: l.nombre,
             pedido: l.pedido, entregado: l.entregado,
             por_peso: l.por_peso, peso_kg: l.peso_kg,
             valor: db.valorLinea(l),
@@ -1456,7 +1457,10 @@ $('#btnCerrar').addEventListener('click', () => {
 
   const c = cierreListo;
   if (!c) { aviso('Un momento, todavía estoy armando el archivo.', 'mal'); prepararCierre(); return; }
-  if (!c.datos.ventas.length && !c.datos.carga.length) {
+  // Las entregas cuentan: un vendedor puede hacer la ruta completa sin
+  // vender nada en la calle, y ese día igual tiene que llegar al PC.
+  if (!c.datos.ventas.length && !c.datos.carga.length
+      && !(c.datos.entregas_detalle || []).length) {
     aviso('No hay nada que enviar todavía.', 'mal'); return;
   }
 

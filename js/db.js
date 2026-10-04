@@ -314,6 +314,10 @@ export function pedidoDesdeRuta(cliente, fecha) {
     monto_efectivo: 0,
     nota: '',
     lineas: (cliente.items || []).map(it => ({
+      // producto_id es la llave con la que el PC reencuentra el renglón.
+      // item_id viaja solo como referencia: el PC lo pierde en cuanto
+      // alguien edita la remisión.
+      producto_id: it.producto_id ?? null,
       item_id: it.item_id ?? null,
       codigo: it.codigo || '',
       nombre: it.nombre || '',
