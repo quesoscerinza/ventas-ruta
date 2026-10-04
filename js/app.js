@@ -500,14 +500,20 @@ async function pintarDia() {
   prepararCierre();   // sin await: que el botón nunca tenga que esperar
 
   const filas = await db.cuadre(fecha);
+  // Un solo bolsillo: lo que salió del CF2, lo que volvió de los pedidos
+  // y lo que se vendió suelto, todo en la misma cuenta.
+  const hayDev = filas.some(f => f.devuelto || f.de_mas);
   $('#cuadre').innerHTML = filas.length ? `
     <table>
-      <tr><th>Producto</th><th>Llevó</th><th>Vendió</th><th>Sobra</th></tr>
+      <tr><th>Producto</th><th>Llevó</th>${hayDev ? '<th>Volvió</th><th>De más</th>' : ''}<th>Vendió</th><th>Sobra</th></tr>
       ${filas.map(f => `<tr class="${f.alerta ? 'alerta' : ''}">
-        <td>${f.nombre}</td><td>${f.cargado}</td><td>${f.vendido}</td><td>${f.sobrante}</td></tr>`).join('')}
+        <td>${f.nombre}</td><td>${f.cargado}</td>` +
+        (hayDev ? `<td>${f.devuelto || ''}</td><td>${f.de_mas || ''}</td>` : '') +
+        `<td>${f.vendido}</td><td><strong>${f.sobrante}</strong></td></tr>`).join('')}
     </table>
-    ${filas.some(f => f.alerta) ? '<p class="nota mal">Hay productos vendidos que no estaban en la carga. Revise antes de cerrar.</p>' : ''}`
-    : '<p class="vacio">No registró la carga del día.</p>';
+    ${filas.some(f => f.alerta) ? '<p class="nota mal">Hay productos en negativo: salió más de lo que entró al carro. Revise antes de cerrar.</p>' : ''}
+    <p class="nota">«Sobra» es lo que debe volver al cuarto frío.</p>`
+    : '<p class="vacio">No registró la carga del día ni atendió pedidos.</p>';
 }
 
 $('#listaVentas').addEventListener('click', async e => {
@@ -541,6 +547,23 @@ async function cargaSugerida() {
   const mapa = new Map();
   for (const it of mia.items) mapa.set(`${it.codigo || ''}|${it.nombre}`, it.cant);
   return { ...mia, mapa, fecha: ruta.fecha };
+}
+
+/* Lo que queda en el carro, producto por producto. Se repinta cada vez
+   que se entra a Carga y cada vez que se guarda una entrega: el número
+   solo sirve si está al día. */
+async function pintarDisponible() {
+  const filas = await db.disponible(hoyISO());
+  $('#dispCaja').hidden = !filas.length;
+  if (!filas.length) return;
+  $('#dispLista').innerHTML = filas.map(f => `
+    <div class="disp-fila ${f.alerta ? 'alerta' : ''}">
+      <span class="disp-nombre">${f.nombre}</span>
+      <span class="disp-cant">${f.sobrante}</span>
+    </div>`).join('') +
+    (filas.some(f => f.alerta)
+      ? '<p class="nota mal">En negativo: salió más producto del que entró al carro.</p>'
+      : '');
 }
 
 async function pintarCarga() {
@@ -585,6 +608,7 @@ async function pintarCarga() {
              value="${valor}" placeholder="0">
     </div>`;
   }).join('') || '<p class="vacio">Cargue la semilla en Ajustes.</p>';
+  await pintarDisponible();
 }
 
 $('#btnGuardarCarga').addEventListener('click', async () => {
@@ -883,6 +907,7 @@ $('#btnGuardarPedido').addEventListener('click', async () => {
   aviso('Entrega guardada.');
   cerrarPedido();
   prepararCierre();
+  pintarDisponible();
 });
 
 $('#btnImprimirPedido').addEventListener('click', async () => {

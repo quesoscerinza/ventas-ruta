@@ -269,26 +269,89 @@ export async function cargaDe(fecha) {
  * Cuadre del queso extra: lo que se llevó, lo que se vendió y lo que debe volver.
  * Sin esto el inventario del PC queda descuadrado.
  */
+/**
+ * EL CUADRE DEL CARRO — un solo bolsillo por producto.
+ *
+ * Todo lo que va en el carro se cuenta junto, venga de donde venga,
+ * porque físicamente es el mismo queso en el mismo carro:
+ *
+ *     cargado  (salió del CF2 como la remisión APP MOVIL)
+ *   + devuelto (lo que no recibió un cliente y se quedó arriba)
+ *   - de_mas   (lo que se le dio de más a otro cliente)
+ *   - vendido  (lo que se vendió suelto en la calle)
+ *   ------------------------------------------------------------
+ *   = sobrante (lo que tiene que volver al cuarto frío)
+ *
+ * `devuelto` junta dos casos: el cliente que recibió menos de lo pedido
+ * y el que no recibió nada. En el segundo vuelve también lo que iba como
+ * cambio, porque eso también subió al carro; en el primero los cambios
+ * se entregaron, así que se cancelan solos.
+ *
+ * OJO con el doble conteo: la app de Remisiones tiene su propio reporte
+ * de remisiones no entregadas. Para devolver al cuarto frío hay que usar
+ * UNO de los dos, no los dos. El bueno es este, porque sale de lo que el
+ * vendedor contó en el carro y no de lo que decía el papel.
+ */
 export async function cuadre(fecha) {
   const carga = await cargaDe(fecha);
   const ventas = (await ventasDe(fecha)).filter(v => !v.anulada);
-  const vendido = new Map();
-  for (const v of ventas)
-    for (const it of v.items)
-      vendido.set(it.id, (vendido.get(it.id) || 0) + it.cant);
+  const pedidos = await pedidosDe(fecha);
 
-  const filas = [];
-  for (const c of carga.items) {
-    const vend = vendido.get(c.id) || 0;
-    filas.push({ id: c.id, codigo: c.codigo, nombre: c.nombre, cargado: c.cant, vendido: vend, sobrante: c.cant - vend });
-    vendido.delete(c.id);
+  const filas = new Map();
+  const fila = (id, codigo, nombre) => {
+    if (!filas.has(id)) {
+      filas.set(id, { id, codigo: codigo || '', nombre: nombre || id,
+                      cargado: 0, devuelto: 0, de_mas: 0, vendido: 0 });
+    }
+    const f = filas.get(id);
+    if (!f.nombre || f.nombre === id) f.nombre = nombre || f.nombre;
+    if (!f.codigo) f.codigo = codigo || '';
+    return f;
+  };
+
+  for (const c of carga.items) fila(c.id, c.codigo, c.nombre).cargado += c.cant;
+
+  for (const v of ventas)
+    for (const it of v.items) fila(it.id, it.codigo, it.nombre).vendido += it.cant;
+
+  for (const p of Object.values(pedidos)) {
+    if (!p.estado || p.estado === 'pendiente') continue;
+    for (const l of p.lineas) {
+      const id = `${l.codigo || ''}|${l.nombre || ''}`;
+      const f = fila(id, l.codigo, l.nombre);
+      if (p.estado === 'no_entregado') {
+        // No recibió nada: vuelve el pedido completo, cambios incluidos.
+        f.devuelto += (Number(l.pedido) || 0) + (Number(l.cambios) || 0);
+        continue;
+      }
+      const dif = (Number(l.entregado) || 0) - (Number(l.pedido) || 0);
+      if (dif < 0) f.devuelto += -dif;
+      else if (dif > 0) f.de_mas += dif;
+    }
   }
-  // Vendido sin haberse cargado: descuadre que hay que revisar antes de cerrar
-  for (const [id, vend] of vendido) {
-    const it = ventas.flatMap(v => v.items).find(i => i.id === id);
-    filas.push({ id, codigo: it?.codigo || '', nombre: it?.nombre || id, cargado: 0, vendido: vend, sobrante: -vend, alerta: true });
+
+  const salida = [];
+  for (const f of filas.values()) {
+    // Un producto que aparece en un pedido pero se entregó tal cual no
+    // movió nada en el carro: no tiene por qué ocupar un renglón.
+    if (!f.cargado && !f.devuelto && !f.de_mas && !f.vendido) continue;
+    const sobrante = f.cargado + f.devuelto - f.de_mas - f.vendido;
+    salida.push({
+      ...f, sobrante,
+      // Queda en negativo: salió más producto del que entró al carro.
+      // No es un error de cuentas, es algo que hay que preguntar antes
+      // de cerrar el día.
+      alerta: sobrante < 0,
+    });
   }
-  return filas;
+  return salida.sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+/** Lo que queda en el carro AHORA MISMO, por producto. Es el cuadre sin
+    los ceros: sirve en plena ruta para saber si se le puede dar de más
+    a un cliente. */
+export async function disponible(fecha) {
+  return (await cuadre(fecha)).filter(f => f.sobrante !== 0 || f.alerta);
 }
 
 /* ---------- Entrega de los pedidos de la ruta ---------- */
