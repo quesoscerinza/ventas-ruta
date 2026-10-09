@@ -59,7 +59,9 @@ export const GRUPOS = {
     etiqueta: 'CF2',
     partes: [
       { id: 'inventario', etiqueta: 'Producto' },
-      { id: 'insumos', etiqueta: 'Insumos', soloLotes: true },
+      // Insumos la ven los dos, leída distinto: el analista con el
+      // análisis de qué pedir, gerencia solo con lo que hay.
+      { id: 'insumos', etiqueta: 'Insumos' },
     ],
   },
   ajustes: {
@@ -80,10 +82,19 @@ export const GRUPOS = {
    grupos      → las pestañas de abajo, en ese orden.
    inicio      → en cuál grupo abre la app al ingresar.
    inventario  → 'lotes'  ve etiqueta por etiqueta y puede contar
-                 'total'  ve solo el total por producto
+                 'total'  ve solo el total, de producto y de insumo
                  null     no ve el cuarto frío
-   soloLectura → true: no se pinta ningún campo editable y además se
-                 bloquea el guardado. Dos candados, no uno.
+   escribe     → los grupos donde SÍ puede guardar. Los que no estén
+                 en la lista quedan de solo lectura: no se pinta ningún
+                 campo editable y además se bloquea el guardado. Dos
+                 candados, no uno.
+
+                 Antes esto era un simple soloLectura: true/false para
+                 todo el perfil, y no alcanzaba. Gerencia hace ruta y
+                 vende, así que necesita escribir en Ventas; pero el
+                 cuarto frío lo cuenta el analista, y gerencia no debe
+                 poder mover un conteo ni sin querer. Son dos permisos
+                 distintos y ahora se declaran por separado.
    verComo     → otros perfiles que puede previsualizar sin salirse.  */
 
 export const PERFILES = {
@@ -92,15 +103,19 @@ export const PERFILES = {
     grupos: ['ventas', 'ruta', 'cf2', 'ajustes'],
     inicio: 'ventas',
     inventario: 'lotes',
-    soloLectura: false,
+    escribe: ['ventas', 'ruta', 'cf2', 'ajustes'],
     verComo: ['administrativo'],
   },
   administrativo: {
     etiqueta: 'Administrativo',
-    grupos: ['cf2', 'ajustes'],
-    inicio: 'cf2',
+    // Es un vendedor más: vende, carga el carro y entrega la ruta igual
+    // que cualquiera. Lo ÚNICO que lo diferencia del vendedor es que
+    // además ve el cuarto frío — y lo ve por totales, sin poder tocar
+    // nada. Por eso 'cf2' está en `grupos` pero no en `escribe`.
+    grupos: ['ventas', 'ruta', 'cf2', 'ajustes'],
+    inicio: 'ventas',
     inventario: 'total',
-    soloLectura: true,
+    escribe: ['ventas', 'ruta', 'ajustes'],
     verComo: [],
   },
   vendedor: {
@@ -108,7 +123,7 @@ export const PERFILES = {
     grupos: ['ventas', 'ruta', 'ajustes'],
     inicio: 'ventas',
     inventario: null,
-    soloLectura: false,
+    escribe: ['ventas', 'ruta', 'ajustes'],
     verComo: [],
   },
 };
@@ -190,6 +205,12 @@ export function partesDe(perfil, grupo) {
   if (!g) return [];
   const conLotes = reglasDe(perfil).inventario === 'lotes';
   return g.partes.filter(p => !p.soloLotes || conLotes);
+}
+
+/** ¿Este perfil puede GUARDAR algo en este grupo?
+    Un grupo que no esté en `escribe` es de solo consulta. */
+export function escribeEn(perfil, grupo) {
+  return (reglasDe(perfil).escribe || []).includes(grupo);
 }
 
 /** ¿Este perfil ve esta pantalla? Busca en todos sus grupos. */

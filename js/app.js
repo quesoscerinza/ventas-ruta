@@ -7,7 +7,7 @@ import * as ticket from './ticket.js';
 import { Ticket } from './escpos.js';
 import { uuid, pesos, hoyISO, fechaCorta, parecidos, normalizar } from './util.js';
 import { verificarCodigo, hayUsuarios, perfilDe, reglasDe, partesDe, veLa, grupoDe,
-         PERFILES, GRUPOS } from './usuarios.js';
+         escribeEn, PERFILES, GRUPOS } from './usuarios.js';
 import * as listaIsa from './lista_isa.js';
 
 const $ = s => document.querySelector(s);
@@ -92,7 +92,12 @@ let sesion = null;   // { usuario, nombre, dispositivo, fecha, perfil }
 let vista = 'vendedor';
 
 const reglas = () => reglasDe(vista);
-const soloLectura = () => !!reglas().soloLectura;
+/* El candado es por GRUPO, no por perfil: gerencia escribe en Ventas
+   y solo consulta el cuarto frío. Las cuatro guardas de CF2 preguntan
+   por 'cf2' explícitamente, para que agregar un permiso en un grupo no
+   abra otro sin que nadie se dé cuenta. */
+const puedeEscribir = grupo => escribeEn(vista, grupo);
+const soloLecturaCF2 = () => !puedeEscribir('cf2');
 
 function aplicarPerfil() {
   const r = reglas();
@@ -106,12 +111,20 @@ function aplicarPerfil() {
   $$('#nav button').forEach(b => b.addEventListener('click', () => irAGrupo(b.dataset.grupo)));
 
   // Lo que solo tiene sentido si se puede escribir
-  const editable = !r.soloLectura;
+  const editable = puedeEscribir('cf2');
   ['#invAcciones', '#invFiltroCaja'].forEach(s => {
     const e = $(s); if (e) e.hidden = !editable;
   });
 
   const porTotal = r.inventario === 'total';
+  // Los selectores de promedio y cobertura son del análisis de pedidos:
+  // quien solo consulta totales no decide pedidos.
+  const ctrl = $('#insControles');
+  if (ctrl) ctrl.hidden = porTotal;
+  const insTit = $('#insTitulo');
+  if (insTit) insTit.textContent = porTotal
+    ? 'CF2 · Existencias de insumos' : 'CF2 · Insumos';
+
   $('#invTitulo').textContent = porTotal
     ? 'CF2 · Existencias' : 'CF2 · Inventario del cuarto frío';
   $('#invBuscar').placeholder = porTotal ? 'Buscar producto' : 'Buscar producto o lote';
@@ -1195,11 +1208,55 @@ function filasInsumos() {
     (a.semanas === null) - (b.semanas === null) || (a.semanas - b.semanas));
 }
 
+/* ── Insumos por total (perfil Administrativo) ────────────────────────
+   El mismo archivo, leído distinto. Gerencia necesita saber CUÁNTO HAY
+   de cada insumo; qué pedir y para cuántas semanas es una decisión del
+   analista, con su promedio y su ventana. Así que acá no hay análisis:
+   nombre y existencia, y nada que elegir.                              */
+function pintarTotalesInsumos() {
+  const lista = (inventario.insumos || []).map(i => ({
+    nombre: i.nombre,
+    categoria: i.categoria || '',
+    unidad: i.unidad || '',
+    stock: Number(i.stock) || 0,
+  }));
+
+  const conSaldo = lista.filter(i => i.stock !== 0);
+  $('#insAvance').innerHTML =
+    `<span>Con existencia</span><strong>${conSaldo.length} de ${lista.length}</strong>`;
+
+  // Igual que en productos: primero lo que tiene existencia, los ceros
+  // al final. Dentro de cada grupo, por categoría y nombre.
+  lista.sort((a, b) =>
+    (a.stock === 0) - (b.stock === 0) ||
+    a.categoria.localeCompare(b.categoria) ||
+    a.nombre.localeCompare(b.nombre));
+
+  let html = '', ultima = null;
+  for (const i of lista) {
+    if (i.categoria !== ultima) {
+      ultima = i.categoria;
+      if (i.categoria) html += `<div class="inv-prod">${i.categoria}</div>`;
+    }
+    const clase = i.stock < 0 ? 'difiere' : (i.stock === 0 ? 'inv-cero' : '');
+    html += `
+    <div class="inv-fila lectura ${clase}">
+      <span class="inv-lote">${i.nombre}</span>
+      <span class="inv-total">${i.stock}${i.unidad ? ' ' + i.unidad : ''}</span>
+    </div>`;
+  }
+  $('#insLista').innerHTML = html;
+  $('#insPie').textContent = `Existencias al ${fechaCorta(inventario.fecha)}, `
+    + 'según el archivo que mandó inQC.';
+}
+
 function pintarInsumos() {
   const hay = inventario && (inventario.insumos || []).length;
   $('#insVacio').hidden = !!hay;
   $('#insPanel').hidden = !hay;
   if (!hay) { $('#insLista').innerHTML = ''; $('#insAvance').innerHTML = ''; return; }
+
+  if (reglas().inventario === 'total') return pintarTotalesInsumos();
 
   const filas = filasInsumos();
   const urgentes = filas.filter(f => f.semanas !== null && f.semanas <= 2).length;
@@ -1395,7 +1452,7 @@ $('#invLista').addEventListener('change', async e => {
   // El segundo candado. El primero es no pintar los campos; este atrapa
   // cualquier descuido de maquetación, para que un gerente no pueda
   // mover inventario ni sin querer.
-  if (soloLectura()) return;
+  if (soloLecturaCF2()) return;
 
   // El lote que confirma a qué pertenece lo contado en un renglón
   // "SIN LOTE" o con el lote mal escrito.
@@ -1435,7 +1492,7 @@ $('#invLista').addEventListener('change', async e => {
 
 $('#invLista').addEventListener('click', async e => {
   if (e.target.id !== 'btnAgregarLote') return;
-  if (soloLectura()) return;
+  if (soloLecturaCF2()) return;
   const lote = $('#invNuevoLote').value.trim();
   const cant = $('#invNuevaCant').value.trim();
   const pid = $('#invNuevoProd').value;
@@ -1464,7 +1521,7 @@ $('#invLista').addEventListener('click', async e => {
 });
 
 $('#btnLimpiarConteo').addEventListener('click', async () => {
-  if (soloLectura() || !inventario) return;
+  if (soloLecturaCF2() || !inventario) return;
   if (!confirm('¿Borrar todo lo contado hoy? El inventario cargado no se pierde.')) return;
   await db.borrarConteos(inventario.fecha);
   conteos = {};
@@ -1590,7 +1647,7 @@ async function prepararConteo() {
 }
 
 $('#btnEnviarConteo').addEventListener('click', () => {
-  if (soloLectura()) return;
+  if (soloLecturaCF2()) return;
   const c = conteoListo;
   if (!c) { aviso('Un momento, estoy armando el archivo.', 'mal'); prepararConteo(); return; }
   if (!c.total) { aviso('Todavía no ha contado nada.', 'mal'); return; }
