@@ -111,6 +111,92 @@ export function cierre(resumen, cfg) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   EXISTENCIAS — LISTA DE LA SRA. ISA
+   ══════════════════════════════════════════════════════════════════
+   El papelito que se le entrega después de hacer el inventario físico:
+   solo los productos de su lista, con lo que hay y para cuántos días
+   alcanza.
+
+   Dos cosas que el ticket dice en voz alta, porque callarlas sería
+   peor que no imprimirlo:
+
+   · Un renglón CONTADO vale distinto a uno que sale del sistema. Lo que
+     todavía no se ha contado va marcado con * — es un dato sin
+     verificar, y quien decida producir tiene derecho a saberlo.
+   · Si un producto de la lista no está en el archivo de inQC (porque lo
+     renombraron o lo desactivaron), sale nombrado al final. Un reporte
+     al que le falta un renglón en silencio es una trampa.             */
+
+export function existencias(reporte, cfg) {
+  const t = new Ticket(cfg.codepage);
+  t.izquierda();
+
+  t.negrita(true);
+  t.linea(centrar(reporte.titulo));
+  t.negrita(false);
+  if (reporte.subtitulo) t.linea(centrar(reporte.subtitulo));
+  t.separador('=');
+
+  t.linea('Inventario del ' + fechaCorta(reporte.fecha));
+  if (cfg.vendedor) t.linea('Contado por: ' + cfg.vendedor);
+  t.linea('Impreso: ' + reporte.impreso);
+  t.separador('-');
+
+  // Las dos columnas numéricas se arman SIEMPRE con esta función, el
+  // encabezado incluido: con campos de ancho fijo no se pueden correr
+  // uno respecto del otro. La marca va en su propia casilla para que el
+  // asterisco no empuje los dígitos y los números queden en columna.
+  const cifras = (hay, marca, dias) =>
+    (hay.padStart(7) + marca + dias.padStart(7)).padStart(COLUMNAS);
+
+  // El nombre va en su propio renglón: a 32 columnas no cabe al lado.
+  t.linea('PRODUCTO' + cifras('HAY', ' ', 'DIAS').slice(8));
+  t.separador('-');
+
+  for (const f of reporte.filas) {
+    for (const l of envolver(f.nombre, COLUMNAS)) t.linea(l);
+    t.linea(cifras(num(f.existencia),
+                   f.verificado ? ' ' : '*',
+                   f.dias === null ? '-' : num(f.dias)));
+  }
+
+  t.separador('-');
+
+  // El renglón que de verdad busca: cuánto de esto ya está contado.
+  t.linea(alinear('Productos', `${reporte.filas.length}`, COLUMNAS));
+  t.linea(alinear('Verificados', `${reporte.verificados} de ${reporte.filas.length}`,
+                  COLUMNAS));
+
+  if (reporte.verificados < reporte.filas.length) {
+    t.linea('');
+    for (const l of envolver(
+      '* El numero con asterisco NO se ha contado: es lo que dice el '
+      + 'sistema. Falta verificarlo en el cuarto frio.', COLUMNAS)) t.linea(l);
+  }
+
+  if (reporte.faltantes.length) {
+    t.separador('-');
+    t.negrita(true);
+    t.linea('NO ESTAN EN EL INVENTARIO');
+    t.negrita(false);
+    for (const n of reporte.faltantes) {
+      for (const l of envolver('- ' + n, COLUMNAS)) t.linea(l);
+    }
+    for (const l of envolver(
+      'Revise si los renombraron o los desactivaron en inQC.',
+      COLUMNAS)) t.linea(l);
+  }
+
+  t.separador('=');
+  for (const l of envolver(
+    'DIAS = para cuantos dias alcanza lo que hay, segun lo que se vende '
+    + 'en un dia normal.', COLUMNAS)) t.linea(l);
+  t.avanzar(4);
+  return t.bytes();
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
    REMISIÓN DE LA RUTA
    ══════════════════════════════════════════════════════════════════
    El pedido que viene del PC, impreso con la misma estructura que
