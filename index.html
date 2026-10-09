@@ -287,7 +287,7 @@
 
 <!-- ============ CF2 · INSUMOS (qué pedir) ============ -->
 <section class="pantalla" data-pantalla="insumos" hidden>
-  <h2>CF2 · Insumos</h2>
+  <h2 id="insTitulo">CF2 · Insumos</h2>
   <p id="insCabecera" class="explica"></p>
 
   <div id="insCuerpo">
@@ -297,7 +297,10 @@
     </p>
 
     <div id="insPanel">
-      <div class="dos">
+      <!-- Los dos selectores son del ANÁLISIS de qué pedir. El perfil
+           que solo consulta totales no los ve: no decide pedidos, y
+           dos casillas que no usa solo estorban. -->
+      <div class="dos" id="insControles">
         <div>
           <label for="insVentana">Promedio de</label>
           <select id="insVentana">
