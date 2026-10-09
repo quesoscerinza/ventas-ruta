@@ -8,6 +8,7 @@ import { Ticket } from './escpos.js';
 import { uuid, pesos, hoyISO, fechaCorta, parecidos, normalizar } from './util.js';
 import { verificarCodigo, hayUsuarios, perfilDe, reglasDe, partesDe, veLa, grupoDe,
          PERFILES, GRUPOS } from './usuarios.js';
+import * as listaIsa from './lista_isa.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -777,6 +778,81 @@ function cerrarPedido() {
   pintarChequeoClientes({});
 }
 
+/* ── Lo que cambia cuando se escribe un número ────────────────────────
+   Estas tres cosas dependen de las cantidades y los precios, y por eso
+   se calculan en funciones aparte: las usa tanto el dibujado completo
+   como el refresco en vivo. Teniéndolas duplicadas, la pantalla y lo
+   que se refresca al teclear se habrían ido separando.                */
+
+function avisoLinea(l) {
+  const falta = Math.max(0, (Number(l.pedido) || 0) - (Number(l.entregado) || 0));
+  const deMas = Math.max(0, (Number(l.entregado) || 0) - (Number(l.pedido) || 0));
+  if (db.pendientePorPesar(l)) return '<span class="ped-pesar">falta pesar</span>';
+  if (falta) return `<span class="ped-menos">${falta} menos</span>`;
+  if (deMas) return `<span class="ped-mas">${deMas} de más</span>`;
+  return '';
+}
+
+function clasesLinea(l) {
+  const falta = (Number(l.pedido) || 0) !== (Number(l.entregado) || 0);
+  return 'ped-linea' + (falta ? ' tocada' : '')
+       + (db.pendientePorPesar(l) ? ' pesar' : '');
+}
+
+function avisoPrecio(l) {
+  // El precio cambiado se le queda fijo a este cliente, así que se
+  // marca en pantalla: no es lo mismo corregir una cantidad que
+  // cambiarle la lista de precios a alguien.
+  if (Number(l.precio) === Number(l.precio_original ?? l.precio)) return '';
+  return `<span class="ped-precio-cambio">antes $${pesos(l.precio_original)}</span>`
+       + ' · el precio nuevo le queda fijo a este cliente';
+}
+
+function pintarCuentas(p) {
+  const cuentas = db.cuentasPedido(p);
+  $('#pedCuentas').innerHTML =
+    (cuentas.devueltos.length ? `<div><span>Se quedaron en el carro</span><strong>${cuentas.devueltos.map(d => d.cantidad + ' ' + d.nombre).join(', ')}</strong></div>` : '') +
+    (cuentas.extras.length ? `<div><span>Salieron del disponible</span><strong>${cuentas.extras.map(x => x.cantidad + ' ' + x.nombre).join(', ')}</strong></div>` : '') +
+    (cuentas.pendientes ? `<div class="chico"><span>Falta pesar</span><span>${cuentas.pendientes} producto(s)</span></div>` : '') +
+    `<div class="neto"><span>A cobrar</span><strong>$${pesos(cuentas.neto)}</strong></div>` +
+    (cuentas.bruto !== cuentas.neto ? `<div class="chico"><span>Decía el pedido</span><span>$${pesos(cuentas.bruto)}</span></div>` : '');
+  if (p.pago === 'mixto') $('#pedMixtoResto').textContent = textoReparto(p, cuentas);
+  return cuentas;
+}
+
+/* Refrescar UNA línea sin volver a dibujarla.
+
+   Esto existe por un error concreto: antes, cada tecla volvía a armar
+   todo el HTML de la lista. Eso borraba el campo donde se estaba
+   escribiendo y lo creaba de nuevo, así que el celular perdía el foco y
+   el cursor volvía al principio. El resultado no era solo incómodo:
+   escribir "2.5" kilos daba 50.2, porque cada dígito entraba adelante
+   del anterior, y al escribir un precio el foco saltaba al campo de
+   cantidad y los dígitos siguientes cambiaban lo ENTREGADO.
+
+   Así que mientras se escribe no se toca ni un input: solo se
+   actualizan los textos que dependen del número.                      */
+function refrescarLinea(i) {
+  const p = pedidos[pedidoAbierto];
+  if (!p || !p.lineas[i]) return;
+  const l = p.lineas[i];
+  const fila = $(`#pedLineas [data-linea="${i}"]`);
+  if (!fila) return;
+
+  fila.className = clasesLinea(l);
+  const av = fila.querySelector('.ped-aviso');
+  if (av) av.innerHTML = avisoLinea(l);
+  const vv = fila.querySelector('.ped-valor');
+  if (vv) vv.textContent = '$' + pesos(db.valorLinea(l));
+  const ap = fila.querySelector('.ped-aviso-precio');
+  if (ap) {
+    const texto = avisoPrecio(l);
+    ap.innerHTML = texto;
+    ap.hidden = !texto;
+  }
+  pintarCuentas(p);
+}
+
 function pintarPedido() {
   const p = pedidos[pedidoAbierto];
   const cliente = clienteDeRuta(pedidoAbierto);
@@ -794,13 +870,6 @@ function pintarPedido() {
 
   if (!noEnt) {
     $('#pedLineas').innerHTML = p.lineas.map((l, i) => {
-      const val = db.valorLinea(l);
-      const falta = Math.max(0, (Number(l.pedido) || 0) - (Number(l.entregado) || 0));
-      const deMas = Math.max(0, (Number(l.entregado) || 0) - (Number(l.pedido) || 0));
-      const porPesar = db.pendientePorPesar(l);
-      const aviso = porPesar ? '<span class="ped-pesar">falta pesar</span>'
-                  : falta ? `<span class="ped-menos">${falta} menos</span>`
-                  : deMas ? `<span class="ped-mas">${deMas} de más</span>` : '';
       // Los de peso se cobran por kilo: lo que se captura es el peso
       // real, no cuántos bloques. Por eso el campo es distinto.
       const campo = l.por_peso
@@ -810,14 +879,14 @@ function pintarPedido() {
         : `<label class="ped-campo"><span>Entregado</span>
              <input class="ped-cant" type="number" inputmode="numeric" min="0"
                     data-i="${i}" value="${l.entregado}"></label>`;
-      // El precio cambiado se le queda fijo a este cliente, así que se
-      // marca en pantalla: no es lo mismo corregir una cantidad que
-      // cambiarle la lista de precios a alguien.
-      const precioCambio = Number(l.precio) !== Number(l.precio_original ?? l.precio);
-      const marcaPrecio = precioCambio
-        ? `<span class="ped-precio-cambio">antes $${pesos(l.precio_original)}</span>` : '';
-      return `<div class="ped-linea ${(falta || deMas) ? 'tocada' : ''} ${porPesar ? 'pesar' : ''}">
-        <div class="ped-nombre">${l.nombre} ${aviso}
+      const marcaPrecio = avisoPrecio(l);
+      // data-linea, .ped-aviso, .ped-valor y .ped-aviso-precio son los
+      // ganchos que usa refrescarLinea() para actualizar los textos sin
+      // volver a crear los campos. El de precio va SIEMPRE, aunque esté
+      // vacío: si apareciera y desapareciera, el teclado del celular se
+      // movería mientras se escribe.
+      return `<div class="${clasesLinea(l)}" data-linea="${i}">
+        <div class="ped-nombre">${l.nombre} <span class="ped-aviso">${avisoLinea(l)}</span>
           ${l.agregada ? '<span class="ped-nueva">agregado</span>' : ''}</div>
         <div class="ped-datos">
           <span class="ped-dato"><em>Pedido</em>${l.pedido}${l.cambios ? ` (+${l.cambios})` : ''}</span>
@@ -825,19 +894,14 @@ function pintarPedido() {
           <label class="ped-campo"><span>Precio${l.por_peso ? '/kg' : ''}</span>
             <input class="ped-precio" type="number" inputmode="numeric" min="0" step="100"
                    data-i="${i}" value="${l.precio}"></label>
-          <span class="ped-dato"><em>Valor</em>$${pesos(val)}</span>
+          <span class="ped-dato"><em>Valor</em><b class="ped-valor">$${pesos(db.valorLinea(l))}</b></span>
         </div>
-        ${marcaPrecio ? `<div class="ped-aviso-precio">${marcaPrecio} · el precio nuevo le queda fijo a este cliente</div>` : ''}
+        <div class="ped-aviso-precio"${marcaPrecio ? '' : ' hidden'}>${marcaPrecio}</div>
       </div>`;
     }).join('') || '<p class="vacio">Este pedido llegó sin productos.</p>';
   }
 
-  $('#pedCuentas').innerHTML =
-    (cuentas.devueltos.length ? `<div><span>Se quedaron en el carro</span><strong>${cuentas.devueltos.map(d => d.cantidad + ' ' + d.nombre).join(', ')}</strong></div>` : '') +
-    (cuentas.extras.length ? `<div><span>Salieron del disponible</span><strong>${cuentas.extras.map(x => x.cantidad + ' ' + x.nombre).join(', ')}</strong></div>` : '') +
-    (cuentas.pendientes ? `<div class="chico"><span>Falta pesar</span><span>${cuentas.pendientes} producto(s)</span></div>` : '') +
-    `<div class="neto"><span>A cobrar</span><strong>$${pesos(cuentas.neto)}</strong></div>` +
-    (cuentas.bruto !== cuentas.neto ? `<div class="chico"><span>Decía el pedido</span><span>$${pesos(cuentas.bruto)}</span></div>` : '');
+  pintarCuentas(p);
 
   // Catálogo para agregar un producto que no iba en el pedido. Solo los
   // que no están ya en la lista: repetir un producto en dos renglones
@@ -868,6 +932,51 @@ $('#listaRutaClientes').addEventListener('click', e => {
 
 $('#btnVolverLista').addEventListener('click', cerrarPedido);
 
+/* ── Tocar un campo y escribir, sin borrar antes ──────────────────────
+   Un campo numérico llega con un valor puesto (el precio de lista, lo
+   entregado, lo que dice el sistema). Si al tocarlo el cursor se queda
+   en medio del número viejo, lo que se teclea se MEZCLA: encima de
+   5000 se escribe 7500 y queda 50075000. En la calle, con una mano,
+   nadie va a borrar dígito por dígito antes de escribir.
+
+   Así que al entrar al campo se selecciona todo: el primer dígito que
+   se teclea reemplaza el valor anterior, como en una calculadora.
+
+   Va por 'focusin' y no por 'focus' porque focus no sube por el árbol y
+   estos campos se crean y se destruyen todo el tiempo. Y con select(),
+   no con setSelectionRange(), que en un input type=number lanza
+   InvalidStateError — ese error ya nos costó una vez.                 */
+function seleccionarAlEntrar(contenedor) {
+  const caja = $(contenedor);
+  if (!caja) return;
+  caja.addEventListener('focusin', e => {
+    const c = e.target;
+    if (c.tagName !== 'INPUT' || c.type !== 'number' || !c.value) return;
+    const original = c.value;
+    const elegir = () => { try { c.select(); } catch { } };
+
+    elegir();            // ya mismo, para quien escribe de inmediato
+    // Y otra vez al terminar el toque: en Android el dedo reubica el
+    // cursor DESPUÉS del evento de foco, y sin este segundo intento la
+    // selección se perdería. Pero solo si el campo sigue intacto: si ya
+    // alcanzó a teclear un dígito, seleccionar ahora se lo borraría.
+    setTimeout(() => {
+      if (document.activeElement === c && c.value === original) elegir();
+    }, 0);
+  });
+}
+['#pedLineas', '#carrito', '#invLista'].forEach(seleccionarAlEntrar);
+
+/* Un número a medio escribir no es un número: "2." y "-" y "" pasan por
+   el camino mientras alguien teclea 2.5. Se guardan solo los valores
+   que de verdad son un número; los intermedios no tocan el modelo, así
+   que el campo nunca se corrige debajo de los dedos. */
+const aNumero = (v, siVacio = 0) => {
+  if (v === '') return siVacio;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : siVacio;
+};
+
 $('#pedLineas').addEventListener('input', e => {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
@@ -875,16 +984,18 @@ $('#pedLineas').addEventListener('input', e => {
   if (Number.isNaN(i) || !p.lineas[i]) return;
   const v = e.target.value.trim();
   if (e.target.classList.contains('ped-cant')) {
-    p.lineas[i].entregado = v === '' ? 0 : Number(v);
+    p.lineas[i].entregado = aNumero(v);
   } else if (e.target.classList.contains('ped-peso')) {
-    p.lineas[i].peso_kg = v === '' ? null : Number(v);
+    p.lineas[i].peso_kg = v === '' ? null : aNumero(v, null);
   } else if (e.target.classList.contains('ped-precio')) {
-    p.lineas[i].precio = v === '' ? 0 : Number(v);
+    p.lineas[i].precio = aNumero(v);
   } else return;
-  pintarPedido();
-  // El foco se pierde al repintar; se devuelve al mismo campo.
-  // Los input type=number no admiten setSelectionRange; basta el foco.
-  $(`#pedLineas [data-i="${i}"]`)?.focus();
+
+  // NO se repinta: eso destruía el campo donde se está escribiendo. Solo
+  // se actualizan los textos que dependen del número (el valor de la
+  // línea, el aviso y las cuentas de abajo). El input que tiene el foco
+  // no se toca, así que el cursor se queda donde está.
+  refrescarLinea(i);
 });
 
 $('#pedPago').addEventListener('change', e => {
@@ -1360,6 +1471,90 @@ $('#btnLimpiarConteo').addEventListener('click', async () => {
   aviso('Conteo borrado.');
   pintarListaInventario();
 });
+
+/* ── Existencias para la Sra. ISA ─────────────────────────────────────
+   Su lista de productos con lo que hay de cada uno, para imprimirle el
+   papelito al terminar el inventario físico.
+
+   La existencia de un producto se arma lote por lote, y cada lote
+   aporta LO CONTADO si ya se contó, o lo que dice el sistema si no.
+   Esa mezcla es a propósito: a media mañana el inventario está
+   incompleto y el reporte igual tiene que servir. Lo que no se hace es
+   disimularlo — un producto al que le falte contar algún lote con saldo
+   sale marcado como no verificado, y el ticket explica el asterisco.
+
+   La lista se cruza por NOMBRE normalizado (sin tildes, puntos ni
+   mayúsculas), que es lo que un humano puede mantener en
+   lista_isa.js. Lo que no aparezca se reporta; no se descarta.        */
+
+function reporteExistencias() {
+  if (!inventario) return null;
+
+  const porNombre = new Map();
+  for (const p of inventario.productos) porNombre.set(normalizar(p.nombre), p);
+
+  const filas = [];
+  const faltantes = [];
+
+  for (const pedido of listaIsa.PRODUCTOS) {
+    const p = porNombre.get(normalizar(pedido.nombre));
+    if (!p) { faltantes.push(pedido.nombre); continue; }
+
+    let existencia = 0, verificado = true;
+    for (const l of (p.lotes.length ? p.lotes : [{ lote: '', sistema: 0 }])) {
+      const c = conteos[claveL(p.producto_id, l.lote)];
+      const sistema = Number(l.sistema) || 0;
+      if (c && c.contado !== null && c.contado !== undefined) {
+        existencia += Number(c.contado) || 0;
+      } else {
+        existencia += sistema;
+        // Un lote en cero sin contar no ensucia el dato: no hay nada que
+        // contar ahí. Solo cuenta como pendiente si tiene saldo.
+        if (sistema !== 0) verificado = false;
+      }
+    }
+
+    const prom = Number(pedido.promedio_dia) || 0;
+    filas.push({
+      nombre: p.nombre,
+      existencia,
+      verificado,
+      // Un día y pico se redondea a un decimal; sin promedio no hay días
+      // que calcular y el renglón sale con guion.
+      dias: prom > 0 ? Math.round((existencia / prom) * 10) / 10 : null,
+    });
+  }
+
+  return {
+    titulo: listaIsa.TITULO,
+    subtitulo: listaIsa.SUBTITULO,
+    fecha: inventario.fecha,
+    impreso: fechaCorta(hoyISO()) + ' ' +
+             new Date().toTimeString().slice(0, 5),
+    filas,
+    faltantes,
+    verificados: filas.filter(f => f.verificado).length,
+  };
+}
+
+$('#btnExistenciasIsa').addEventListener('click', async () => {
+  const r = reporteExistencias();
+  if (!r) { aviso('Primero cargue el inventario que manda inQC.', 'mal'); return; }
+  if (!r.filas.length) {
+    aviso('Ningún producto de la lista está en este inventario.', 'mal');
+    return;
+  }
+  try {
+    await impresora.imprimir(ticket.existencias(r, cfg));
+    const falta = r.filas.length - r.verificados;
+    aviso(falta
+      ? `Impreso. ${falta} producto(s) sin contar salieron marcados con *.`
+      : 'Impreso. Los ' + r.filas.length + ' productos están contados.');
+  } catch (e) {
+    aviso('No se pudo imprimir: ' + e.message, 'mal');
+  }
+});
+
 
 /* El archivo se arma por adelantado: Android solo deja abrir el menú de
    Compartir como reacción inmediata al toque, y si el botón se pone a
