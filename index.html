@@ -271,6 +271,13 @@
 
     <div id="invLista" class="inv-lista"></div>
 
+    <!-- Imprimir es de solo lectura, así que va FUERA de #invAcciones
+         (ese bloque se esconde en los perfiles de solo lectura). Gerencia
+         también puede sacar su propio papelito. -->
+    <div id="invImprimir">
+      <button id="btnExistenciasIsa">🖶 Imprimir existencias (Sra. ISA)</button>
+    </div>
+
     <div id="invAcciones">
       <button id="btnEnviarConteo" class="primario grande">Enviar el conteo al PC</button>
       <button id="btnLimpiarConteo" class="peligro">Borrar lo contado hoy</button>
