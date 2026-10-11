@@ -106,13 +106,25 @@ button:disabled{opacity:.35}
 /* --- Productos --- */
 .productos{margin-top:10px;max-height:44vh;overflow-y:auto;border-top:1px solid var(--linea)}
 .prod{
-  display:flex;justify-content:space-between;gap:10px;text-align:left;
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  text-align:left;
   background:#fff;color:var(--ink);border-bottom:1px solid var(--linea);
   text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;
   padding:12px 10px;margin:0;
 }
 .prod:active{background:var(--verde-claro)}
-.pnombre{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* El nombre se parte en dos renglones antes que recortarse, igual que en
+   las demás listas de la app.
+   Dos razones. La primera, que sin `min-width:0` un hijo de flex no baja
+   de lo que mide su texto: con `nowrap` el renglón crecía hasta 451px en
+   una pantalla de 360 y empujaba la página entera para el lado — por eso
+   la barra verde y el contenido no coincidían y los precios quedaban
+   fuera del borde.
+   La segunda, que recortar aquí es peligroso: "CAMPESINO 450g VACIO -
+   CON ETIQUETA" y "CAMPESINO 450g VACIO - CALIFORNIA - MAQUILA*" se
+   leerían idénticos con puntos suspensivos, y el vendedor tocaría el que
+   no era. Un renglón más alto cuesta menos que una remisión mal hecha. */
+.pnombre{min-width:0;overflow-wrap:anywhere}
 .pprecio{font-weight:700;flex:none;color:var(--verde-hondo)}
 
 /* --- Carrito --- */
