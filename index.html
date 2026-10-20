@@ -188,6 +188,25 @@
 
     <div class="ped-cuentas" id="pedCuentas"></div>
 
+    <!-- Descuento sobre el pedido entero. Va aquí, pegado a las cuentas
+         y ANTES de cómo pagó, porque cambia el valor que se va a cobrar:
+         si estuviera después, se registraría el pago sobre un número que
+         todavía iba a cambiar. -->
+    <fieldset>
+      <legend>Descuento</legend>
+      <div class="dos">
+        <div>
+          <label for="pedDescuento">Rebaja ($)</label>
+          <input id="pedDescuento" type="number" inputmode="numeric" min="0" step="500">
+        </div>
+        <div>
+          <label for="pedDescuentoNota">¿Por qué?</label>
+          <input id="pedDescuentoNota" type="text" placeholder="Ej. llegó tarde">
+        </div>
+      </div>
+      <p class="nota" id="pedDescuentoPie"></p>
+    </fieldset>
+
     <fieldset>
       <legend>Cómo pagó</legend>
       <select id="pedPago">
