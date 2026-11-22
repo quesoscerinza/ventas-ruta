@@ -42,4 +42,9 @@ export const USUARIOS = [
     perfil: 'administrativo', 
     hash: '7d6da2f4d9f478bef7d95cd7f1d2059de5a642b16455c6d0c87a330ba9c12f29' 
   },
+   { usuario: 'alvaro',
+     nombre: 'Alvaro_Joya',
+     dispositivo: 'M1',
+     perfil: 'vendedor',
+     hash: 'd8065e1b56f0c9b4f3e754811fc0ad4965e97fa47d348fcd9376309136353f27' },
 ];
