@@ -1049,7 +1049,53 @@ function refrescarLinea(i) {
     ap.innerHTML = texto;
     ap.hidden = !texto;
   }
+  const ac = fila.querySelector('.ped-cambio-pie');
+  if (ac) {
+    const texto = avisoCambio(l, i);
+    ac.innerHTML = texto;
+    ac.hidden = !texto;
+  }
   pintarCuentas(p);
+}
+
+
+/* ── Los cambios (reposición) ─────────────────────────────────────────
+   Un cambio es queso que va a reponer uno que salió malo: sube al carro
+   con el pedido pero NO se cobra. El problema real que esto resuelve:
+   el cliente a veces NO recibe el cambio —porque no tenía qué devolver,
+   o no lo quiso— y entonces ese queso se vende. Antes no había cómo
+   decirlo: quedaba contado como entregado gratis, y la venta aparecía
+   como un faltante en el cuadre del carro.
+
+   Ahora el renglón de cambios se puede corregir, y si el cliente se lo
+   lleva pagándolo hay un botón que lo pasa de cambio a cobrado en un
+   solo toque — dos ediciones a mano en plena calle es justo donde se
+   olvida la mitad. */
+
+function camposCambio(l, i) {
+  // Solo aparece donde hay cambios de verdad: en un pedido sin cambios,
+  // una casilla más solo estorbaría.
+  if (!((Number(l.cambios_original ?? l.cambios) || 0) > 0)) return '';
+  return `<label class="ped-campo"><span>Cambios</span>
+      <input class="ped-cambios" type="number" inputmode="numeric" min="0"
+             data-i="${i}" value="${l.cambios}"></label>`;
+}
+
+function avisoCambio(l, i) {
+  const orig = Number(l.cambios_original ?? l.cambios) || 0;
+  const hoy = Number(l.cambios) || 0;
+  if (orig <= 0) return '';
+  if (hoy === orig) {
+    return `<span class="ped-cambio-ok">${orig} de cambio, sin cobrar</span>`
+         + ` <button type="button" class="ped-cobrar" data-i="${i}">`
+         + `Cobrarlo</button>`;
+  }
+  const sinRecibir = orig - hoy;
+  if (sinRecibir > 0) {
+    return `<span class="ped-cambio-no">${sinRecibir} de cambio sin entregar</span>`
+         + ` · vuelve al carro. Si se lo llevó pagando, súbalo en Entregado.`;
+  }
+  return `<span class="ped-cambio-no">${hoy - orig} de cambio de más</span>`;
 }
 
 function pintarPedido() {
@@ -1088,14 +1134,16 @@ function pintarPedido() {
         <div class="ped-nombre">${l.nombre} <span class="ped-aviso">${avisoLinea(l)}</span>
           ${l.agregada ? '<span class="ped-nueva">agregado</span>' : ''}</div>
         <div class="ped-datos">
-          <span class="ped-dato"><em>Pedido</em>${l.pedido}${l.cambios ? ` (+${l.cambios})` : ''}</span>
+          <span class="ped-dato"><em>Pedido</em>${l.pedido}</span>
           ${campo}
+          ${camposCambio(l, i)}
           <label class="ped-campo"><span>Precio${l.por_peso ? '/kg' : ''}</span>
             <input class="ped-precio" type="number" inputmode="numeric" min="0" step="100"
                    data-i="${i}" value="${l.precio}"></label>
           <span class="ped-dato"><em>Valor</em><b class="ped-valor">$${pesos(db.valorLinea(l))}</b></span>
         </div>
         <div class="ped-aviso-precio"${marcaPrecio ? '' : ' hidden'}>${marcaPrecio}</div>
+        <div class="ped-cambio-pie"${avisoCambio(l, i) ? '' : ' hidden'}>${avisoCambio(l, i)}</div>
       </div>`;
     }).join('') || '<p class="vacio">Este pedido llegó sin productos.</p>';
   }
@@ -1178,6 +1226,30 @@ const aNumero = (v, siVacio = 0) => {
   return Number.isFinite(n) ? n : siVacio;
 };
 
+/* Cobrar el cambio: el cliente no lo recibió como reposición pero se lo
+   llevó pagándolo. Es UN toque y no dos ediciones, porque en la calle
+   bajar los cambios y olvidar subir lo entregado es lo que deja el queso
+   sin cobrar y el cuadre descuadrado. */
+$('#pedLineas').addEventListener('click', e => {
+  const btn = e.target.closest('.ped-cobrar');
+  if (!btn) return;
+  const p = pedidos[pedidoAbierto];
+  const i = Number(btn.dataset.i);
+  if (!p || !p.lineas[i]) return;
+  const l = p.lineas[i];
+  const cuantos = Number(l.cambios) || 0;
+  if (cuantos <= 0) return;
+
+  l.cambios = 0;
+  l.entregado = (Number(l.entregado) || 0) + cuantos;
+
+  // Se repinta la línea entera: cambiaron DOS campos y el botón se va.
+  // No hay nadie escribiendo, así que repintar no le quita el foco a
+  // nadie — el motivo por el que no se repinta al teclear.
+  pintarPedido();
+  aviso(`${cuantos} de cambio pasaron a cobrarse en ${l.nombre}.`);
+});
+
 $('#pedLineas').addEventListener('input', e => {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
@@ -1190,6 +1262,8 @@ $('#pedLineas').addEventListener('input', e => {
     p.lineas[i].peso_kg = v === '' ? null : aNumero(v, null);
   } else if (e.target.classList.contains('ped-precio')) {
     p.lineas[i].precio = aNumero(v);
+  } else if (e.target.classList.contains('ped-cambios')) {
+    p.lineas[i].cambios = aNumero(v);
   } else return;
 
   // NO se repinta: eso destruía el campo donde se está escribiendo. Solo
@@ -1944,6 +2018,9 @@ async function armarCierre() {
             producto_id: l.producto_id, item_id: l.item_id,
             codigo: l.codigo, nombre: l.nombre,
             pedido: l.pedido, cambios: l.cambios || 0, entregado: l.entregado,
+            // Con cuántos cambios salió, para que el PC vea si se
+            // corrigieron y actualice la remisión.
+            cambios_original: l.cambios_original ?? l.cambios ?? 0,
             por_peso: l.por_peso, peso_kg: l.peso_kg,
             precio: l.precio, precio_original: l.precio_original ?? l.precio,
             obsequio: !!l.obsequio,

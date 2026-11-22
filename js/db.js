@@ -335,11 +335,23 @@ export async function cuadre(fecha) {
     for (const l of p.lineas) {
       const id = `${l.codigo || ''}|${l.nombre || ''}`;
       const f = fila(id, l.codigo, l.nombre);
+      // Los cambios que SALIERON, que no siempre son los que quedaron
+      // anotados: el vendedor los corrige cuando el cliente no los
+      // recibe. (Pedidos viejos no traen el original: ahí no hubo
+      // corrección y los dos valores son el mismo.)
+      const camOrig = Number(l.cambios_original ?? l.cambios) || 0;
       if (p.estado === 'no_entregado') {
         // No recibió nada: vuelve el pedido completo, cambios incluidos.
-        f.devuelto += (Number(l.pedido) || 0) + (Number(l.cambios) || 0);
+        f.devuelto += (Number(l.pedido) || 0) + camOrig;
         continue;
       }
+      // El cambio que el cliente NO recibió se quedó arriba del carro,
+      // igual que un producto que volvió. Sin esto, el queso quedaba
+      // contado como entregado gratis y, si el vendedor lo vendía,
+      // aparecía un faltante que nadie sabía de dónde salía.
+      const camDevuelto = camOrig - (Number(l.cambios) || 0);
+      if (camDevuelto > 0) f.devuelto += camDevuelto;
+
       const dif = (Number(l.entregado) || 0) - (Number(l.pedido) || 0);
       if (dif < 0) f.devuelto += -dif;
       else if (dif > 0) f.de_mas += dif;
@@ -392,6 +404,7 @@ export function lineaNueva(prod) {
     nombre: prod.nombre || '',
     pedido: 0,                 // no iba en el pedido original
     cambios: 0,
+    cambios_original: 0,
     entregado: 1,
     precio: Number(prod.precio) || 0,
     precio_original: Number(prod.precio) || 0,
@@ -427,6 +440,10 @@ export function pedidoDesdeRuta(cliente, fecha) {
       // cobran, por eso viajan aparte y no se suman acá.
       pedido: Number(it.cantidad ?? it.cant ?? 0),
       cambios: Number(it.cambios || 0),
+      // Con cuántos cambios SALIÓ del cuarto frío. Si el vendedor baja
+      // los cambios porque el cliente no los recibió, la diferencia es
+      // queso que se quedó en el carro, y el cuadre tiene que saberlo.
+      cambios_original: Number(it.cambios || 0),
       entregado: Number(it.cantidad ?? it.cant ?? 0),
       precio: Number(it.precio || 0),
       // Se guarda el precio con el que salió del PC para poder mostrar
@@ -523,12 +540,28 @@ export function cuentasPedido(pedido) {
   bruto = Math.round(bruto);
   neto = noEntregado ? 0 : Math.round(neto);
 
+  /* Descuento comercial sobre el pedido entero: el producto SÍ se
+     entregó, pero se le cobra menos. No es una devolución, aunque las
+     dos bajen lo que se cobra: la devolución dice que el producto volvió
+     al carro, y por eso viaja en otra lista. Si se mezclaran, el PC
+     recibiría de vuelta producto que el cliente ya se llevó.
+
+     Se topa al neto: rebajar más de lo que vale el pedido dejaría a la
+     empresa debiéndole al cliente por haberle vendido. */
+  const pedido_desc = noEntregado ? 0
+    : Math.min(Math.max(0, Math.round(Number(pedido.descuento) || 0)), neto);
+  const neto_final = Math.max(0, neto - pedido_desc);
+
   return {
-    bruto, neto, pendientes,
+    bruto, neto: neto_final, pendientes,
+    // Lo que valía antes de rebajar, para poder mostrarlo en el ticket.
+    antes_descuento: neto,
+    descuento: pedido_desc,
     devolucion: noEntregado ? bruto : devueltos.reduce((s, d) => s + d.monto, 0),
     extra: extras.reduce((s, x) => s + x.monto, 0),
     devueltos, extras,
-    tocado: noEntregado || devueltos.length > 0 || extras.length > 0 || bruto !== neto,
+    tocado: noEntregado || devueltos.length > 0 || extras.length > 0
+            || bruto !== neto || pedido_desc > 0,
   };
 }
 
