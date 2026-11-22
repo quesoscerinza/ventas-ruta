@@ -162,6 +162,11 @@
   <p id="entregasCabecera" class="explica"></p>
   <div id="subClientes">
     <p class="explica" id="entregasAyuda">Toque un cliente para ver su pedido y registrar la entrega.</p>
+    <!-- En el celular no caben 30 clientes en pantalla: el buscador es la
+         forma de llegar a uno sin recorrer toda la lista con el dedo. -->
+    <input id="buscarRutaCliente" class="buscador" type="search"
+           inputmode="search" autocomplete="off"
+           placeholder="🔍 Buscar cliente por nombre…">
     <div id="listaRutaClientes" class="chequeo"></div>
   </div>
 
