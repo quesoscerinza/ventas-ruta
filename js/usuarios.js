@@ -53,6 +53,9 @@ export const GRUPOS = {
       { id: 'ruta', etiqueta: 'Productos' },
       { id: 'carga', etiqueta: 'Carga' },
       { id: 'entregas', etiqueta: 'Clientes' },
+      // Responde "¿de quién era este queso?" sin tener que abrir cliente
+      // por cliente. Sale de la misma ruta que ya está en el celular.
+      { id: 'quienpidio', etiqueta: 'Quién pidió' },
     ],
   },
   cf2: {

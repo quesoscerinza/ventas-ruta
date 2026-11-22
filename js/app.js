@@ -243,6 +243,17 @@ function ir(pantalla) {
   document.body.style.setProperty(
     '--subnav', barra.hidden ? '0px' : barra.offsetHeight + 'px');
 
+  // Y lo mismo con el buscador: en las pantallas que lo tienen, los
+  // títulos de pueblo deben pegarse DEBAJO de él. Sin esto los dos se
+  // pegaban al mismo borde y el título del pueblo tapaba al primer
+  // cliente de la lista. En las pantallas sin buscador vale 0.
+  requestAnimationFrame(() => {
+    const vista = document.querySelector(`.pantalla[data-pantalla="${pantalla}"]`);
+    const buscador = vista && vista.querySelector('.buscador');
+    document.body.style.setProperty(
+      '--buscador', buscador ? buscador.offsetHeight + 8 + 'px' : '0px');
+  });
+
   // Si se estaba atendiendo a un cliente y se sale de Clientes, se
   // cierra el detalle: volver después y encontrarse el pedido de otro
   // abierto es la forma fácil de registrar la entrega equivocada.
@@ -675,6 +686,7 @@ async function pintarRuta() {
   const marcas = await db.marcasDe(rutaHoy.fecha);
   pintarChequeoProductos(marcas.producto || {});
   pintarChequeoClientes(marcas.cliente || {});
+  pintarQuienPidio();
 }
 
 function barraAvance(hechos, total, rotulo) {
@@ -699,6 +711,55 @@ function pintarChequeoProductos(marcas) {
     }).join('') || '<p class="vacio">La ruta llegó sin productos.</p>') + '</div>';
 }
 
+
+/* ── Clientes de la ruta: por pueblo, y con buscador ──────────────────
+   Antes salían todos de corrido en orden alfabético, como los manda el
+   PC. En la calle eso no sirve: uno entrega pueblo por pueblo, y en una
+   pantalla de celular no caben 30 nombres. Así que se agrupan igual que
+   en la app de Remisiones y se filtran por nombre.
+
+   El agrupado NO cambia cómo se ve cada cliente: el renglón es el mismo
+   de siempre, solo que ahora va bajo el título de su pueblo. */
+
+let filtroCliente = '';
+
+function clientesPorPueblo(lista) {
+  const buscado = normalizar(filtroCliente);
+  const filtrada = buscado
+    ? lista.filter(c => normalizar(c.nombre).includes(buscado))
+    : lista;
+
+  const grupos = new Map();
+  for (const c of filtrada) {
+    const pueblo = (c.pueblo || '').trim() || 'Sin pueblo asignado';
+    if (!grupos.has(pueblo)) grupos.set(pueblo, []);
+    grupos.get(pueblo).push(c);
+  }
+  // El orden de los pueblos es el que trae el archivo (el del PC, que es
+  // el orden en que se recorre la ruta); dentro de cada uno, alfabético.
+  for (const l of grupos.values()) l.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  return { grupos, filtrada };
+}
+
+/* Pinta los grupos usando la MISMA función de renglón que ya existía,
+   que es lo que Daniel pidió no tocar. */
+function listaAgrupada(lista, renglon) {
+  const { grupos, filtrada } = clientesPorPueblo(lista);
+
+  if (!lista.length) return '<p class="vacio">La ruta llegó sin clientes.</p>';
+  if (!filtrada.length) {
+    return `<p class="vacio">Ningún cliente de la ruta se llama algo parecido a
+            «${filtroCliente}».</p>`;
+  }
+
+  let html = '';
+  for (const [pueblo, cs] of grupos) {
+    html += `<div class="inv-prod">${pueblo} (${cs.length})</div>`;
+    html += '<div class="chequeo">' + cs.map(renglon).join('') + '</div>';
+  }
+  return html;
+}
+
 function pintarChequeoClientes(marcas) {
   const lista = rutaHoy.clientes || [];
 
@@ -708,9 +769,11 @@ function pintarChequeoClientes(marcas) {
     $('#entregasAyuda').textContent =
       'Marque cada cliente cuando le haya entregado su pedido.';
     const hechos = lista.filter(c => marcas[c.cliente_id]).length;
+    // El avance se cuenta sobre la ruta COMPLETA, no sobre lo filtrado:
+    // si dijera "1 de 1" al buscar un cliente, parecería que ya terminó.
     $('#listaRutaClientes').innerHTML =
       barraAvance(hechos, lista.length, 'Entregados') +
-      '<div class="chequeo">' + (lista.map(c => {
+      listaAgrupada(lista, c => {
         const ok = !!marcas[c.cliente_id];
         const detalle = (c.items || []).map(i => `${i.cant} ${i.nombre}`).join(', ');
         return `<label class="chq ${ok ? 'hecho' : ''}">
@@ -719,7 +782,7 @@ function pintarChequeoClientes(marcas) {
           <span class="t2">${[c.pueblo, c.numero_remision].filter(Boolean).join(' · ')}<br>${detalle}</span></span>
           <span class="cant">$${pesos(c.total || 0)}</span>
         </label>`;
-      }).join('') || '<p class="vacio">La ruta llegó sin clientes.</p>') + '</div>';
+      });
     return;
   }
 
@@ -730,7 +793,7 @@ function pintarChequeoClientes(marcas) {
                                     pedidos[c.cliente_id].estado !== 'pendiente').length;
   $('#listaRutaClientes').innerHTML =
     barraAvance(hechos, lista.length, 'Atendidos') +
-    '<div class="chequeo">' + (lista.map(c => {
+    listaAgrupada(lista, c => {
       const p = pedidos[c.cliente_id];
       const estado = p ? p.estado : 'pendiente';
       const cuentas = p ? db.cuentasPedido(p) : null;
@@ -747,8 +810,122 @@ function pintarChequeoClientes(marcas) {
         <span class="t2">${[c.pueblo, c.numero_remision].filter(Boolean).join(' · ')}<br>${detalle}</span></span>
         <span class="cant">$${pesos(valor)}</span>
       </div>`;
-    }).join('') || '<p class="vacio">La ruta llegó sin clientes.</p>') + '</div>';
+    });
 }
+
+
+/* El buscador no repinta toda la ruta: solo vuelve a armar la lista de
+   clientes. Repintar entero destruiría el campo donde se está
+   escribiendo y el celular perdería el foco — el mismo error que ya
+   habíamos pagado en las casillas de cantidades y precios. */
+$('#buscarRutaCliente').addEventListener('input', async e => {
+  filtroCliente = e.target.value;
+  if (!rutaHoy) return;
+  const marcas = await db.marcasDe(rutaHoy.fecha);
+  pintarChequeoClientes(marcas.cliente || {});
+});
+
+
+/* ================= ¿Quién pidió qué producto? ================= */
+/* La misma pregunta que resuelve el consolidado en el PC, pero en la
+   calle: sobra un queso en el carro y hay que saber de quién era, o un
+   cliente llama a preguntar si su pedido iba.
+
+   Sale de la ruta que ya está guardada en el celular, así que funciona
+   sin señal y sin pedirle nada al PC. */
+
+let filtroProducto = '';
+
+/* Todos los productos de la ruta, con quién pidió cada uno. Se arma
+   recorriendo los items de cada cliente, que es donde de verdad está el
+   detalle; la lista de arriba (la de cargar el carro) solo trae totales. */
+function indiceProductos() {
+  const indice = new Map();
+  for (const c of (rutaHoy?.clientes || [])) {
+    for (const i of (c.items || [])) {
+      const llave = (i.codigo || '') + '|' + i.nombre;
+      if (!indice.has(llave)) {
+        indice.set(llave, { codigo: i.codigo || '', nombre: i.nombre, total: 0, quienes: [] });
+      }
+      const p = indice.get(llave);
+      const cant = Number(i.cant) || 0;
+      p.total += cant;
+      p.quienes.push({ nombre: c.nombre, pueblo: (c.pueblo || '').trim(), cant });
+    }
+  }
+  return [...indice.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+function pintarQuienPidio() {
+  const caja = $('#listaQuienPidio');
+  const cab = $('#quienCabecera');
+  if (!caja) return;
+
+  if (!rutaHoy) {
+    cab.textContent = 'Todavía no ha cargado la ruta del día.';
+    caja.innerHTML = '';
+    return;
+  }
+
+  const vieja = rutaHoy.fecha !== hoyISO();
+  cab.innerHTML = `<strong>${rutaHoy.dia_ruta}</strong> · ${fechaCorta(rutaHoy.fecha)}`
+    + (vieja ? ' <span class="marca-dup">no es de hoy</span>' : '');
+
+  const buscado = normalizar(filtroProducto);
+  const todos = indiceProductos();
+  const lista = buscado
+    ? todos.filter(p => normalizar(p.nombre).includes(buscado)
+                     || normalizar(p.codigo).includes(buscado))
+    : todos;
+
+  if (!todos.length) {
+    caja.innerHTML = '<p class="vacio">La ruta llegó sin productos.</p>';
+    return;
+  }
+  if (!lista.length) {
+    caja.innerHTML = `<p class="vacio">Ningún producto de la ruta se llama algo
+                      parecido a «${filtroProducto}».</p>`;
+    return;
+  }
+
+  // Sin buscar, la lista va cerrada: son muchos productos y abrirlos
+  // todos dejaría la pantalla imposible de recorrer. Buscando, se abre
+  // el que quedó, que es justo el que se estaba buscando.
+  const abrir = buscado && lista.length <= 3;
+
+  caja.innerHTML = lista.map(p => {
+    const porPueblo = new Map();
+    for (const q of p.quienes) {
+      const pu = q.pueblo || 'Sin pueblo asignado';
+      if (!porPueblo.has(pu)) porPueblo.set(pu, []);
+      porPueblo.get(pu).push(q);
+    }
+    let detalle = '';
+    for (const [pueblo, qs] of porPueblo) {
+      qs.sort((a, b) => a.nombre.localeCompare(b.nombre));
+      detalle += `<div class="quien-pueblo">${pueblo}</div>`;
+      detalle += qs.map(q =>
+        `<div class="quien-fila"><span>${q.nombre}</span><b>${q.cant}</b></div>`).join('');
+    }
+    return `<details class="quien" ${abrir ? 'open' : ''}>
+      <summary>
+        <span class="txt"><span class="t1">${p.nombre}</span>
+        <span class="t2">${p.codigo || ''} · ${p.quienes.length} cliente${p.quienes.length === 1 ? '' : 's'}</span></span>
+        <span class="cant">${p.total}</span>
+      </summary>
+      ${detalle}
+    </details>`;
+  }).join('');
+}
+
+// OJO con el id: 'buscarProducto' ya lo usa el buscador de la pantalla
+// de Vender. Dos elementos con el mismo id hacen que querySelector
+// devuelva el primero, así que este listener se habría enganchado al
+// buscador equivocado y además habría estorbado al de ventas.
+$('#buscarQuienPidio').addEventListener('input', e => {
+  filtroProducto = e.target.value;
+  pintarQuienPidio();
+});
 
 /* ================= El pedido de un cliente ================= */
 /* El celular recoge lo que pasó; no decide cómo se registra. Manda lo
@@ -823,6 +1000,15 @@ function avisoPrecio(l) {
 
 function pintarCuentas(p) {
   const cuentas = db.cuentasPedido(p);
+  // El pie del descuento se actualiza con las cuentas: es el número que
+  // la gente mira para saber en cuánto quedó el pedido.
+  const pie = $('#pedDescuentoPie');
+  if (pie) {
+    pie.textContent = cuentas.descuento
+      ? `De $${pesos(cuentas.antes_descuento)} se rebajan $${pesos(cuentas.descuento)}: `
+        + `quedan $${pesos(cuentas.neto)}.`
+      : 'Déjelo en blanco si no hay rebaja.';
+  }
   $('#pedCuentas').innerHTML =
     (cuentas.devueltos.length ? `<div><span>Se quedaron en el carro</span><strong>${cuentas.devueltos.map(d => d.cantidad + ' ' + d.nombre).join(', ')}</strong></div>` : '') +
     (cuentas.extras.length ? `<div><span>Salieron del disponible</span><strong>${cuentas.extras.map(x => x.cantidad + ' ' + x.nombre).join(', ')}</strong></div>` : '') +
@@ -925,6 +1111,8 @@ function pintarPedido() {
     productos.filter(x => !yaEstan.has(x.id))
       .map(x => `<option value="${x.id}">${x.nombre} · $${pesos(x.precio)}</option>`).join('');
 
+  $('#pedDescuento').value = p.descuento || '';
+  $('#pedDescuentoNota').value = p.descuento_nota || '';
   $('#pedPago').value = p.pago || 'pendiente';
   $('#pedNota').value = p.nota || '';
   const mixto = p.pago === 'mixto';
@@ -1010,6 +1198,20 @@ $('#pedLineas').addEventListener('input', e => {
   // no se toca, así que el cursor se queda donde está.
   refrescarLinea(i);
 });
+
+/* Igual que las cantidades y los precios: NO se repinta mientras se
+   escribe, o el campo se destruiría debajo de los dedos. Solo se
+   recalculan las cuentas, que es lo único que depende del número. */
+['#pedDescuento', '#pedDescuentoNota'].forEach(sel => {
+  $(sel).addEventListener('input', () => {
+    const p = pedidos[pedidoAbierto];
+    if (!p) return;
+    p.descuento = aNumero($('#pedDescuento').value.trim());
+    p.descuento_nota = $('#pedDescuentoNota').value.trim();
+    pintarCuentas(p);
+  });
+});
+seleccionarAlEntrar('#pedDescuento');
 
 $('#pedPago').addEventListener('change', e => {
   const p = pedidos[pedidoAbierto];
@@ -1733,6 +1935,9 @@ async function armarCierre() {
           monto_consignado: p.monto_consignado || 0,
           nota: p.nota || '',
           bruto: c.bruto, devolucion: c.devolucion, extra: c.extra, neto: c.neto,
+          // Va aparte de la devolución: el PC tiene que poder distinguir
+          // "volvió producto" de "se cobró menos".
+          descuento: c.descuento, descuento_nota: p.descuento_nota || '',
           devueltos: c.devueltos,
           extras: c.extras,
           lineas: p.lineas.map(l => ({
