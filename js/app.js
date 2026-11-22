@@ -11,6 +11,31 @@ import { verificarCodigo, hayUsuarios, perfilDe, reglasDe, partesDe, veLa, grupo
 import * as listaIsa from './lista_isa.js';
 
 const $ = s => document.querySelector(s);
+
+/* Enganchar un evento SIN que un elemento que falte tumbe la app.
+   Antes se hacía $('#x').addEventListener(...) directo en el cuerpo del
+   módulo. Si ese elemento no existía —porque se subió el app.js nuevo y
+   el index.html viejo, que es facilísimo de hacer— reventaba ahí mismo,
+   el módulo moría a media carga y el celular quedaba SIN barra de abajo
+   y sin pestañas: una sola pantalla muerta, imposible de entender para
+   quien está en la calle.
+
+   Ahora lo que falta se avisa en la consola y lo demás sigue andando:
+   se pierde esa función, no la app entera. */
+const faltantes = [];
+
+function al(sel, evento, fn, opciones) {
+  const e = $(sel);
+  if (!e) {
+    faltantes.push(sel);
+    console.warn(`[cerinza] Falta ${sel} en index.html — esa parte queda sin funcionar. `
+                 + 'Suba el index.html que va con esta versión.');
+    return;
+  }
+  e.addEventListener(evento, fn, opciones);
+}
+
+
 const $$ = s => [...document.querySelectorAll(s)];
 
 let cfg = {};
@@ -166,10 +191,10 @@ function abrirMenu(abrir) {
   if (abrir) pintarMenu();
 }
 
-$('#btnMenu').addEventListener('click', () => abrirMenu($('#menuPanel').hidden));
-$('#menuFondo').addEventListener('click', () => abrirMenu(false));
+al('#btnMenu', 'click', () => abrirMenu($('#menuPanel').hidden));
+al('#menuFondo', 'click', () => abrirMenu(false));
 
-$('#menuVista').addEventListener('change', async e => {
+al('#menuVista', 'change', async e => {
   vista = e.target.value;
   aplicarPerfil();
   abrirMenu(false);
@@ -180,11 +205,11 @@ $('#menuVista').addEventListener('change', async e => {
     : `Viendo la app como ${PERFILES[vista].etiqueta}.`);
 });
 
-$('#btnIngresar').addEventListener('click', entrar);
-$('#inClave').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
-$('#btnSalir').addEventListener('click', salir);
+al('#btnIngresar', 'click', entrar);
+al('#inClave', 'keydown', e => { if (e.key === 'Enter') entrar(); });
+al('#btnSalir', 'click', salir);
 
-$('#verClave').addEventListener('click', () => {
+al('#verClave', 'click', () => {
   const campo = $('#inClave'), boton = $('#verClave');
   const oculta = campo.type === 'password';
   campo.type = oculta ? 'text' : 'password';
@@ -267,7 +292,7 @@ function ir(pantalla) {
   if (pantalla === 'insumos') pintarInventario().then(pintarInsumos);
 }
 
-$('#subnavGrupo').addEventListener('click', e => {
+al('#subnavGrupo', 'click', e => {
   const b = e.target.closest('button');
   if (b && b.dataset.pantalla) ir(b.dataset.pantalla);
 });
@@ -280,7 +305,7 @@ impresora.alCambiar(e => {
   $('#btnConectar').textContent = e.conectada ? 'Reconectar' : 'Conectar impresora';
 });
 
-$('#btnConectar').addEventListener('click', async () => {
+al('#btnConectar', 'click', async () => {
   try {
     const n = await impresora.conectar();
     aviso('Conectada: ' + n);
@@ -302,7 +327,7 @@ function limpiarCliente() {
   $('#datosCliente').hidden = true;
 }
 
-$('#cliNombre').addEventListener('input', () => {
+al('#cliNombre', 'input', () => {
   const nombre = $('#cliNombre').value.trim();
   const caja = $('#parecidos');
   $('#datosCliente').hidden = nombre.length < 3;
@@ -366,9 +391,9 @@ function pintarBuscador(filtro = '') {
   }).join('') || '<p class="vacio">No hay productos. Cargue la semilla en Ajustes.</p>';
 }
 
-$('#buscarProducto').addEventListener('input', e => pintarBuscador(e.target.value));
+al('#buscarProducto', 'input', e => pintarBuscador(e.target.value));
 
-$('#listaProductos').addEventListener('click', e => {
+al('#listaProductos', 'click', e => {
   const btn = e.target.closest('.prod');
   if (!btn) return;
   agregar(btn.dataset.id);
@@ -411,7 +436,7 @@ function pintarCarrito() {
   $('#btnCobrar').disabled = !carrito.length;
 }
 
-$('#carrito').addEventListener('click', e => {
+al('#carrito', 'click', e => {
   const n = e.target.dataset.n;
   if (n === undefined) return;
   if (e.target.classList.contains('mas')) carrito[n].cant += 1;
@@ -421,7 +446,7 @@ $('#carrito').addEventListener('click', e => {
   pintarCarrito();
 });
 
-$('#carrito').addEventListener('change', e => {
+al('#carrito', 'change', e => {
   const n = e.target.dataset.n;
   if (n === undefined) return;
   if (e.target.classList.contains('icant')) {
@@ -434,7 +459,7 @@ $('#carrito').addEventListener('change', e => {
 });
 
 /* ================= Guardar e imprimir ================= */
-$('#btnCobrar').addEventListener('click', async () => {
+al('#btnCobrar', 'click', async () => {
   if (!cfg.dispositivo) { aviso('Primero ponga el número de celular (M1, M2…) en Ajustes.', 'mal'); return ir('ajustes'); }
   const cli = tomarCliente();
   if (!cli) { aviso('Falta el nombre del cliente.', 'mal'); return $('#cliNombre').focus(); }
@@ -541,7 +566,7 @@ async function pintarDia() {
     : '<p class="vacio">No registró la carga del día ni atendió pedidos.</p>';
 }
 
-$('#listaVentas').addEventListener('click', async e => {
+al('#listaVentas', 'click', async e => {
   const re = e.target.dataset.reimprimir, an = e.target.dataset.anular;
   if (re) {
     const v = await db.obtener('ventas', re);
@@ -636,7 +661,7 @@ async function pintarCarga() {
   await pintarDisponible();
 }
 
-$('#btnGuardarCarga').addEventListener('click', async () => {
+al('#btnGuardarCarga', 'click', async () => {
   const items = $$('#listaCarga input').map(inp => {
     const p = productos.find(x => x.id === inp.dataset.id);
     return { id: inp.dataset.id, codigo: p?.codigo || '', nombre: p?.nombre || inp.dataset.id, cant: Number(inp.value) || 0 };
@@ -818,7 +843,7 @@ function pintarChequeoClientes(marcas) {
    clientes. Repintar entero destruiría el campo donde se está
    escribiendo y el celular perdería el foco — el mismo error que ya
    habíamos pagado en las casillas de cantidades y precios. */
-$('#buscarRutaCliente').addEventListener('input', async e => {
+al('#buscarRutaCliente', 'input', async e => {
   filtroCliente = e.target.value;
   if (!rutaHoy) return;
   const marcas = await db.marcasDe(rutaHoy.fecha);
@@ -922,7 +947,7 @@ function pintarQuienPidio() {
 // de Vender. Dos elementos con el mismo id hacen que querySelector
 // devuelva el primero, así que este listener se habría enganchado al
 // buscador equivocado y además habría estorbado al de ventas.
-$('#buscarQuienPidio').addEventListener('input', e => {
+al('#buscarQuienPidio', 'input', e => {
   filtroProducto = e.target.value;
   pintarQuienPidio();
 });
@@ -1174,12 +1199,12 @@ function pintarPedido() {
     ? 'Deshacer: sí se entregó' : 'No se entregó nada';
 }
 
-$('#listaRutaClientes').addEventListener('click', e => {
+al('#listaRutaClientes', 'click', e => {
   const fila = e.target.closest('[data-abrir]');
   if (fila) abrirPedido(fila.dataset.abrir);
 });
 
-$('#btnVolverLista').addEventListener('click', cerrarPedido);
+al('#btnVolverLista', 'click', cerrarPedido);
 
 /* ── Tocar un campo y escribir, sin borrar antes ──────────────────────
    Un campo numérico llega con un valor puesto (el precio de lista, lo
@@ -1230,7 +1255,7 @@ const aNumero = (v, siVacio = 0) => {
    llevó pagándolo. Es UN toque y no dos ediciones, porque en la calle
    bajar los cambios y olvidar subir lo entregado es lo que deja el queso
    sin cobrar y el cuadre descuadrado. */
-$('#pedLineas').addEventListener('click', e => {
+al('#pedLineas', 'click', e => {
   const btn = e.target.closest('.ped-cobrar');
   if (!btn) return;
   const p = pedidos[pedidoAbierto];
@@ -1250,7 +1275,7 @@ $('#pedLineas').addEventListener('click', e => {
   aviso(`${cuantos} de cambio pasaron a cobrarse en ${l.nombre}.`);
 });
 
-$('#pedLineas').addEventListener('input', e => {
+al('#pedLineas', 'input', e => {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
   const i = Number(e.target.dataset.i);
@@ -1287,7 +1312,7 @@ $('#pedLineas').addEventListener('input', e => {
 });
 seleccionarAlEntrar('#pedDescuento');
 
-$('#pedPago').addEventListener('change', e => {
+al('#pedPago', 'change', e => {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
   p.pago = e.target.value;
@@ -1302,10 +1327,10 @@ function alCambiarMonto() {
   p.monto_consignado = Number($('#pedConsignado').value) || 0;
   $('#pedMixtoResto').textContent = textoReparto(p, db.cuentasPedido(p));
 }
-$('#pedEfectivo').addEventListener('input', alCambiarMonto);
-$('#pedConsignado').addEventListener('input', alCambiarMonto);
+al('#pedEfectivo', 'input', alCambiarMonto);
+al('#pedConsignado', 'input', alCambiarMonto);
 
-$('#pedProducto').addEventListener('change', e => {
+al('#pedProducto', 'change', e => {
   const p = pedidos[pedidoAbierto];
   const prod = productos.find(x => x.id === e.target.value);
   if (!p || !prod) return;
@@ -1314,12 +1339,12 @@ $('#pedProducto').addEventListener('change', e => {
   aviso(`${prod.nombre} agregado al pedido.`);
 });
 
-$('#pedNota').addEventListener('input', e => {
+al('#pedNota', 'input', e => {
   const p = pedidos[pedidoAbierto];
   if (p) p.nota = e.target.value;
 });
 
-$('#btnNoEntregada').addEventListener('click', async () => {
+al('#btnNoEntregada', 'click', async () => {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
   if (p.estado === 'no_entregado') {
@@ -1338,7 +1363,7 @@ $('#btnNoEntregada').addEventListener('click', async () => {
   prepararCierre();
 });
 
-$('#btnGuardarPedido').addEventListener('click', async () => {
+al('#btnGuardarPedido', 'click', async () => {
   const p = pedidos[pedidoAbierto];
   if (!p) return;
   if (p.estado !== 'no_entregado') p.estado = 'entregado';
@@ -1360,7 +1385,7 @@ $('#btnGuardarPedido').addEventListener('click', async () => {
   pintarDisponible();
 });
 
-$('#btnImprimirPedido').addEventListener('click', async () => {
+al('#btnImprimirPedido', 'click', async () => {
   const p = pedidos[pedidoAbierto];
   const cliente = clienteDeRuta(pedidoAbierto);
   if (!p || !cliente) return;
@@ -1380,8 +1405,8 @@ async function alMarcar(e) {
   await db.marcar(rutaHoy.fecha, inp.dataset.tipo, inp.dataset.id, inp.checked);
   pintarRuta();
 }
-$('#listaRutaProductos').addEventListener('change', alMarcar);
-$('#listaRutaClientes').addEventListener('change', alMarcar);
+al('#listaRutaProductos', 'change', alMarcar);
+al('#listaRutaClientes', 'change', alMarcar);
 
 
 /* ================= Pantalla Inventario ================= */
@@ -1566,10 +1591,10 @@ function pintarInsumos() {
     `hasta el ${fechaCorta(inventario.fecha)}.`;
 }
 
-$('#insVentana').addEventListener('change', e => {
+al('#insVentana', 'change', e => {
   insVentana = Number(e.target.value); pintarInsumos();
 });
-$('#insCobertura').addEventListener('change', e => {
+al('#insCobertura', 'change', e => {
   insCobertura = Number(e.target.value); pintarInsumos();
 });
 
@@ -1723,7 +1748,7 @@ function pintarListaInventario() {
 
 /* Cada número se guarda al momento: si el celular se apaga en la cámara,
    no se pierde nada de lo contado. */
-$('#invLista').addEventListener('change', async e => {
+al('#invLista', 'change', async e => {
   const inp = e.target;
   // El segundo candado. El primero es no pintar los campos; este atrapa
   // cualquier descuido de maquetación, para que un gerente no pueda
@@ -1766,7 +1791,7 @@ $('#invLista').addEventListener('change', async e => {
   prepararConteo();
 });
 
-$('#invLista').addEventListener('click', async e => {
+al('#invLista', 'click', async e => {
   if (e.target.id !== 'btnAgregarLote') return;
   if (soloLecturaCF2()) return;
   const lote = $('#invNuevoLote').value.trim();
@@ -1796,7 +1821,7 @@ $('#invLista').addEventListener('click', async e => {
   if (el) el.addEventListener('input', pintarListaInventario);
 });
 
-$('#btnLimpiarConteo').addEventListener('click', async () => {
+al('#btnLimpiarConteo', 'click', async () => {
   if (soloLecturaCF2() || !inventario) return;
   if (!confirm('¿Borrar todo lo contado hoy? El inventario cargado no se pierde.')) return;
   await db.borrarConteos(inventario.fecha);
@@ -1870,7 +1895,7 @@ function reporteExistencias() {
   };
 }
 
-$('#btnExistenciasIsa').addEventListener('click', async () => {
+al('#btnExistenciasIsa', 'click', async () => {
   const r = reporteExistencias();
   if (!r) { aviso('Primero cargue el inventario que manda inQC.', 'mal'); return; }
   if (!r.filas.length) {
@@ -1922,7 +1947,7 @@ async function prepararConteo() {
   } catch { conteoListo = null; }
 }
 
-$('#btnEnviarConteo').addEventListener('click', () => {
+al('#btnEnviarConteo', 'click', () => {
   if (soloLecturaCF2()) return;
   const c = conteoListo;
   if (!c) { aviso('Un momento, estoy armando el archivo.', 'mal'); prepararConteo(); return; }
@@ -2070,7 +2095,7 @@ function descargarCierre(c) {
   aviso('Se descargó ' + c.nombre + '. Adjúntelo por WhatsApp.');
 }
 
-$('#btnCerrar').addEventListener('click', () => {
+al('#btnCerrar', 'click', () => {
   if (!cfg.dispositivo) { aviso('Falta el número de celular en Ajustes.', 'mal'); return ir('ajustes'); }
 
   const c = cierreListo;
@@ -2099,7 +2124,7 @@ $('#btnCerrar').addEventListener('click', () => {
   }
 });
 
-$('#btnImprimirCierre').addEventListener('click', async () => {
+al('#btnImprimirCierre', 'click', async () => {
   const datos = await armarCierre();
   try { await impresora.imprimir(ticket.cierre(datos.resumen, cfg)); }
   catch (e) { aviso('No se pudo imprimir: ' + e.message, 'mal'); }
@@ -2148,7 +2173,7 @@ async function pintarAjustes() {
   }
 }
 
-$('#btnGuardarAjustes').addEventListener('click', async () => {
+al('#btnGuardarAjustes', 'click', async () => {
   if (!(await sesionActiva())) {
     await db.ajustar('dispositivo', $('#ajDispositivo').value.trim().toUpperCase());
     await db.ajustar('vendedor', $('#ajVendedor').value.trim());
@@ -2210,7 +2235,7 @@ async function procesarArchivo(texto) {
   }
 }
 
-$('#archivoSemilla').addEventListener('change', async e => {
+al('#archivoSemilla', 'change', async e => {
   const f = e.target.files[0];
   if (!f) return;
   try {
@@ -2241,7 +2266,7 @@ async function revisarCompartido() {
   }
 }
 
-$('#btnProbarAcentos').addEventListener('click', async () => {
+al('#btnProbarAcentos', 'click', async () => {
   const t = new Ticket(cfg.codepage);
   t.linea('PRUEBA DE ACENTOS');
   t.separador();
@@ -2336,3 +2361,12 @@ async function mostrarVersion() {
 
 mostrarVersion();
 navigator.serviceWorker?.addEventListener?.('controllerchange', mostrarVersion);
+
+/* Si faltaron pedazos del index.html, hay que DECIRLO en la pantalla.
+   Un console.warn no le sirve a quien está en la calle: vería media app
+   funcionando a medias sin saber por qué, que es justo lo que pasó. */
+if (faltantes.length) {
+  setTimeout(() => aviso(
+    `Esta versión de la app necesita un index.html más nuevo (faltan ${faltantes.length} `
+    + 'partes). Funciona, pero algunas cosas no. Pídale el archivo a Daniel.', 'mal'), 1200);
+}
