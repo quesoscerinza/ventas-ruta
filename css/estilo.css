@@ -493,3 +493,18 @@ button.volver{
 .quien-fila:last-child{border-bottom:none}
 .quien-fila span{min-width:0;overflow-wrap:anywhere}
 .quien-fila b{flex:none;color:var(--verde-hondo)}
+
+/* --- Cambios (reposición) en la línea del pedido --- */
+.ped-cambio-pie{
+  font-size:12px;color:var(--ink-soft);padding:2px 0 0;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.ped-cambio-ok{color:var(--verde-hondo);font-weight:600}
+.ped-cambio-no{color:#B45309;font-weight:600}
+/* Botón chico y en línea: no es una acción del pedido entero, es de
+   este renglón, y tiene que verse como tal. */
+.ped-cobrar{
+  margin:0;padding:4px 10px;font-size:12px;width:auto;
+  background:var(--verde-hondo);color:#fff;border-radius:3px;
+  text-transform:none;letter-spacing:0;
+}
