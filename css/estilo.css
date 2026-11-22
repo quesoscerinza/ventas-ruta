@@ -30,6 +30,7 @@
      suelto que se desencuadra en cuanto aparece otra barra. */
   --tope:56px;
   --subnav:0px;
+  --buscador:0px;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
@@ -330,7 +331,7 @@ button.ojo{
 .inv-prod{
   background:var(--verde-hondo);color:#fff;font-size:12.5px;
   padding:8px 10px;margin-top:10px;border-radius:4px 4px 0 0;
-  position:sticky;top:calc(var(--tope) + var(--subnav));z-index:5;
+  position:sticky;top:calc(var(--tope) + var(--subnav) + var(--buscador));z-index:5;
 }
 .inv-fila{
   display:flex;align-items:center;gap:8px;background:var(--panel);
@@ -456,3 +457,39 @@ button.volver{
 }
 #pedAgregar{margin:12px 0}
 #pedAgregar select{margin:0}
+
+/* --- Buscadores de la ruta (clientes y productos) --- */
+/* Pegado arriba, debajo de la sub-pestaña: en una lista larga uno busca
+   mientras baja, y si el campo se fuera con el scroll tocaría subir
+   hasta arriba cada vez. */
+.buscador{
+  position:sticky;top:calc(var(--tope) + var(--subnav));z-index:6;
+  width:100%;margin:0 0 10px;
+}
+
+/* --- ¿Quién pidió qué? --- */
+.quien{
+  background:var(--panel);border:1px solid var(--linea);border-radius:4px;
+  margin-bottom:8px;overflow:hidden;
+}
+.quien summary{
+  display:flex;align-items:center;gap:11px;padding:12px 11px;cursor:pointer;
+  list-style:none;
+}
+.quien summary::-webkit-details-marker{display:none}
+.quien[open] summary{border-bottom:1px solid var(--linea);background:var(--verde-claro)}
+.quien .txt{flex:1;min-width:0}
+.quien .t1{display:block;font-weight:600;overflow-wrap:anywhere}
+.quien .t2{display:block;font-size:12px;color:var(--ink-soft)}
+.quien .cant{font-weight:700;color:var(--verde-hondo);flex:none}
+.quien-pueblo{
+  background:var(--fondo);font-size:11.5px;font-weight:700;
+  color:var(--ink-soft);padding:5px 11px;letter-spacing:.04em;
+}
+.quien-fila{
+  display:flex;justify-content:space-between;gap:11px;
+  padding:9px 11px;border-bottom:1px solid var(--linea);font-size:13.5px;
+}
+.quien-fila:last-child{border-bottom:none}
+.quien-fila span{min-width:0;overflow-wrap:anywhere}
+.quien-fila b{flex:none;color:var(--verde-hondo)}
